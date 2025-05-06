@@ -1,10 +1,13 @@
 {
-    "python.pythonPath": "path/to/your/blender/python",
+    "python.pythonPath": "D:/3D/Blender/blender-4.4.3-windows-x64/4.4/python/bin/python.exe",
     "python.linting.enabled": true,
     "python.linting.pylintEnabled": true,
     "python.linting.flake8Enabled": true,
     "python.formatting.provider": "black",
     "python.autoComplete.extraPaths": [
         "src"
-    ]
+    ],
+    "python.defaultInterpreterPath": "D:/3D/Blender/blender-4.4.3-windows-x64/4.4/python/bin/python.exe",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.typeCheckingMode": "strict"
 }
