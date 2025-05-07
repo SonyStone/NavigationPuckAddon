@@ -5,6 +5,8 @@ This module handles the registration and unregistration of keymaps for the addon
 
 import bpy
 
+from src.panels.view_tools_widget import HEAVYPOLY_OT_transform_tools_widget, HEAVYPOLY_OT_view_tools_widget
+
 addon_keymaps: list[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]] = []
 
 
@@ -23,8 +25,14 @@ def register_keymaps():
         # Add a new keymap item - Alt+Q to open pie menu
         # Change key and modifiers as desired
         kmi = km.keymap_items.new(
-            "heavypoly.view_tools_widget",
+            HEAVYPOLY_OT_view_tools_widget.bl_idname,
             type="V",
+            value="PRESS",
+        )
+
+        kmi = km.keymap_items.new(
+            HEAVYPOLY_OT_transform_tools_widget.bl_idname,
+            type="C",
             value="PRESS",
         )
 

@@ -1,3 +1,0 @@
-blender >= 4.40
-bpy
-pytest

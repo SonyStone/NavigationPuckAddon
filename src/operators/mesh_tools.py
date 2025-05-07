@@ -1,26 +1,9 @@
 # pyright: reportPrivateImportUsage=none
 
-from typing import final, TYPE_CHECKING, Set, Literal, ClassVar
+from typing import Set, Literal, ClassVar
 import bpy
 
 from .view_handlers import PanHandler, RollHandler, ViewOrbitHandler, ZoomHandler
-
-if TYPE_CHECKING:
-    from bpy._typing import rna_enums
-
-
-class HEAVYPOLY_OT_smart_extrude(bpy.types.Operator):
-    """Smart extrusion tool"""
-    bl_idname = "heavypoly.smart_extrude"
-    bl_label = "Smart Extrude"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @final
-    def execute(self, context: bpy.types.Context) -> set["rna_enums.OperatorReturnItems"]:
-
-        self.report({"INFO"}, "Smart extrude executed")
-        return {"FINISHED"}
-
 
 ModalReturnType = Set[Literal['RUNNING_MODAL',
                               'CANCELLED', 'FINISHED', 'PASS_THROUGH', 'INTERFACE']]
@@ -58,7 +41,7 @@ class ViewPanOperator(bpy.types.Operator):
         elif not self.is_pressed and event.type in {'RIGHTMOUSE'} and event.value == 'PRESS':
             return {'CANCELLED'}
 
-        return {'PASS_THROUGH'}
+        return {'RUNNING_MODAL'}
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> ModalReturnType:
         """Invoke the modal operator."""
@@ -103,7 +86,7 @@ class ViewRollOperator(bpy.types.Operator):
         elif not self.is_pressed and event.type in {'RIGHTMOUSE'} and event.value == 'PRESS':
             return {'CANCELLED'}
 
-        return {'PASS_THROUGH'}
+        return {'RUNNING_MODAL'}
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> ModalReturnType:
         """Invoke the modal operator."""
@@ -149,7 +132,7 @@ class ViewZoomOperator(bpy.types.Operator):
         elif not self.is_pressed and event.type in {'RIGHTMOUSE'} and event.value == 'PRESS':
             return {'CANCELLED'}
 
-        return {'PASS_THROUGH'}
+        return {'RUNNING_MODAL'}
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> ModalReturnType:
         """Invoke the modal operator."""
@@ -195,7 +178,7 @@ class ViewOrbitOperator(bpy.types.Operator):
         elif not self.is_pressed and event.type in {'RIGHTMOUSE'} and event.value == 'PRESS':
             return {'CANCELLED'}
 
-        return {'PASS_THROUGH'}
+        return {'RUNNING_MODAL'}
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> ModalReturnType:
         """Invoke the modal operator."""
@@ -212,7 +195,6 @@ class ViewOrbitOperator(bpy.types.Operator):
 
 # Add to __init__.py classes tuple
 classes = (
-    HEAVYPOLY_OT_smart_extrude,
     ViewRollOperator,
     ViewPanOperator,
     ViewZoomOperator,
