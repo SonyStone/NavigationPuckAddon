@@ -6,6 +6,7 @@ This module handles the registration and unregistration of keymaps for the addon
 import bpy
 
 from src.panels.view_tools_widget import NAVIGATION_PUCK_OT_view_tools_widget
+from .. import __name__ as addon_name
 
 addon_keymaps: list[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]] = []
 
@@ -19,11 +20,11 @@ def register_keymaps():
     kc = wm.keyconfigs.addon
 
     if kc:
+
         # Create a new keymap for 3D View
         km = kc.keymaps.new(name="3D View", space_type="VIEW_3D")
 
-        # Add a new keymap item - V to open Navigation Puck
-        # Change key and modifiers as desired
+        # Add a new keymap item with the customizable keybinding
         kmi = km.keymap_items.new(
             NAVIGATION_PUCK_OT_view_tools_widget.bl_idname,
             type="V",

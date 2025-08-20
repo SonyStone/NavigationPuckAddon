@@ -4,7 +4,7 @@ schema_version = "1.0.0"
 # Change the values according to your extension
 id = "navigation_puck_addon"
 version = "1.0.0"
-name = "navigation_puck_addon"
+name = "Navigation Puck Addon"
 tagline = "This is another extension"
 maintainer = "Ilya"
 # Supported types: "add-on", "theme"
@@ -15,7 +15,7 @@ type = "add-on"
 
 # Optional list defined by Blender and server, see:
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
-tags = ["Animation", "Sequencer"]
+tags = ["User Interface", "3D View"]
 
 blender_version_min = "4.2.0"
 # # Optional: Blender version that the extension does not support, earlier versions are supported.

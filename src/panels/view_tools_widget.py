@@ -1,12 +1,12 @@
 from enum import Enum, auto
 from dataclasses import dataclass, field
 import math
-from bpy.types import Context, Operator, Event, SpaceView3D
+from bpy.types import Context, Operator, Event, SpaceView3D  # type: ignore
 from gpu.shader import from_builtin
 from gpu_extras.batch import batch_for_shader
 from typing import List, Tuple, Dict, Optional, Set, Literal, Callable, Any, TypeVar
-import bpy
-import blf
+import bpy  # type: ignore
+import blf  # type: ignore
 
 # ---------------------------------------------------------------------------- #
 #                                  DATA MODELS                                  #
@@ -19,7 +19,19 @@ T = TypeVar('T', bound='BaseWidgetOperator')
 
 @dataclass
 class Button:
-    """Represents a clickable button in a widget"""
+    """Represents a clickable button in a widget.
+
+    Attributes:
+        label (str): The text label displayed on the button.
+        icon (str): The icon associated with the button.
+        callback (Optional[Callable[[Context, 'Button'], ModalReturnType]]):
+            The function to call when the button is clicked.
+        icon_value (int): The numeric value of the icon for Blender's UI.
+        position (Tuple[float, float]): The (x, y) position of the button.
+        size (Tuple[float, float]): The (width, height) dimensions of the button.
+        data (Dict[str, Any]): Additional data associated with the button.
+    """
+
     label: str
     icon: str = ''
     callback: Optional[Callable[[Context,
@@ -46,7 +58,15 @@ class Button:
         return self.size[1]
 
     def contains_point(self, x: float, y: float) -> bool:
-        """Check if this button contains the given point"""
+        """Check if this button contains the given point.
+
+        Args:
+            x (float): The x-coordinate of the point.
+            y (float): The y-coordinate of the point.
+
+        Returns:
+            bool: True if the point is within the button's bounds, False otherwise.
+        """
         return (self.x <= x <= self.x + self.width and
                 self.y <= y <= self.y + self.height)
 
@@ -304,7 +324,7 @@ class BaseWidgetOperator(Operator):
         self.active = False
 
     def draw_callback(self, op, context: Context) -> None:
-        """Draw the widget"""
+        """Draw callback for the widget."""
         if not self.active:
             return
 
@@ -342,8 +362,8 @@ def execute_view_roll(context: Context, button: Button) -> ModalReturnType:
 
 class NAVIGATION_PUCK_OT_view_tools_widget(BaseWidgetOperator):
     """Display floating view tools widget at mouse position"""
-    bl_idname = "navigation_puck.view_tools_widget"
-    bl_label = "View Tools Widget"
+    bl_idname = "navigation_puck.navigation_puck_popup"
+    bl_label = "Navigation Puck Popup"
 
     @classmethod
     def setup_buttons(cls) -> None:
