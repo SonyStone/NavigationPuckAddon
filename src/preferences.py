@@ -1,12 +1,12 @@
 import bpy  # type: ignore
 from .panels.view_tools_widget import NAVIGATION_PUCK_OT_view_tools_widget
-from .. import __name__ as addon_name
+from .. import __package__  as base_package
 import rna_keymap_ui
 
 class NavigationPuckPreferences(bpy.types.AddonPreferences):
     """Preferences for the Navigation Puck addon."""
     # The `bl_idname` must match the addon module name in `bl_info`
-    bl_idname = addon_name
+    bl_idname = base_package 
 
     def draw(self, context):
         layout = self.layout
