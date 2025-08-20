@@ -5,13 +5,14 @@ schema_version = "1.0.0"
 id = "navigation_puck_addon"
 version = "1.0.0"
 name = "Navigation Puck Addon"
-tagline = "This is another extension"
+tagline = "Navigation Puck like in Sketchbook Pro"
 maintainer = "Ilya"
 # Supported types: "add-on", "theme"
 type = "add-on"
 
 # Optional link to documentation, support, source files, etc
-# website = "https://extensions.blender.org/add-ons/my-example-package/"
+website = "https://github.com/SonyStone/NavigationPuckAddon"
+issue_tracker = "https://github.com/SonyStone/NavigationPuckAddon/issues"
 
 # Optional list defined by Blender and server, see:
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
@@ -25,13 +26,8 @@ blender_version_min = "4.2.0"
 # License conforming to https://spdx.org/licenses/ (use "SPDX: prefix)
 # https://docs.blender.org/manual/en/dev/advanced/extensions/licenses.html
 license = [
-  "SPDX:GPL-2.0-or-later",
+  "SPDX:GPL-3.0-or-later",
 ]
-# Optional: required by some licenses.
-# copyright = [
-#   "2002-2024 Developer Name",
-#   "1998 Company Name",
-# ]
 
 # Optional list of supported platforms. If omitted, the extension will be available in all operating systems.
 # platforms = ["windows-x64", "macos-arm64", "linux-x64"]
