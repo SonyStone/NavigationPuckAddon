@@ -15,11 +15,11 @@ from . src import operators, panels
 from . src.keymap import register_keymaps, unregister_keymaps
 
 bl_info = {
-    "name": "Heavypoly Tools",
+    "name": "Navigation Puck",
     "author": "Your Name",
     "version": (1, 0, 0),
     "blender": (3, 0, 0),
-    "location": "View3D > Sidebar > Heavypoly",
+    "location": "View3D > ",
     "description": "Custom tools for Blender workflow enhancement",
     "warning": "",
     "doc_url": "",

@@ -1,8 +1,8 @@
 import bpy
-from . import mesh_tools
+from . import view_operators
 
 classes = (
-    *mesh_tools.classes,
+    *view_operators.classes,
 )
 
 def register():

@@ -11,7 +11,7 @@ ModalReturnType = Set[Literal['RUNNING_MODAL',
 
 class ViewPanOperator(bpy.types.Operator):
     """Pan the view while mouse button is held down"""
-    bl_idname: ClassVar[str] = "heavypoly.view_pan_modal"
+    bl_idname: ClassVar[str] = "navigation_puck.view_pan_modal"
     bl_label: ClassVar[str] = "Pan View (Hold)"
     bl_options: ClassVar[Set[str]] = {'REGISTER', 'UNDO'}
 
@@ -57,7 +57,7 @@ class ViewPanOperator(bpy.types.Operator):
 
 class ViewRollOperator(bpy.types.Operator):
     """Roll the view while mouse button is held down"""
-    bl_idname: ClassVar[str] = "heavypoly.view_roll_modal"
+    bl_idname: ClassVar[str] = "navigation_puck.view_roll_modal"
     bl_label: ClassVar[str] = "Roll View (Hold)"
     bl_options: ClassVar[Set[str]] = {'REGISTER', 'UNDO'}
 
@@ -102,7 +102,7 @@ class ViewRollOperator(bpy.types.Operator):
 
 class ViewZoomOperator(bpy.types.Operator):
     """Zoom the view while mouse button is held down"""
-    bl_idname: ClassVar[str] = "heavypoly.view_zoom_modal"
+    bl_idname: ClassVar[str] = "navigation_puck.view_zoom_modal"
     bl_label: ClassVar[str] = "Zoom View (Hold)"
     bl_options: ClassVar[Set[str]] = {'REGISTER', 'UNDO'}
 
@@ -148,7 +148,7 @@ class ViewZoomOperator(bpy.types.Operator):
 
 class ViewOrbitOperator(bpy.types.Operator):
     """Orbit the view vertically while mouse button is held down"""
-    bl_idname: ClassVar[str] = "heavypoly.view_orbit_modal"
+    bl_idname: ClassVar[str] = "navigation_puck.view_orbit_modal"
     bl_label: ClassVar[str] = "Orbit Vertical (Hold)"
     bl_options: ClassVar[Set[str]] = {'REGISTER', 'UNDO'}
 

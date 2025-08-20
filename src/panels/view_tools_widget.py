@@ -235,6 +235,12 @@ class BaseWidgetOperator(Operator):
 
         self.active = True
         context.window_manager.modal_handler_add(self)
+
+
+        # Force an immediate redraw of the area
+        if context.area:
+            context.area.tag_redraw()
+
         return {'RUNNING_MODAL'}
 
     def modal(self, context: Context, event: Event) -> ModalReturnType:
@@ -311,32 +317,32 @@ class BaseWidgetOperator(Operator):
 
 
 # ---------------------------------------------------------------------------- #
-#                         HEAVYPOLY VIEW TOOLS WIDGET                          #
+#                         NAVIGATION PUCK VIEW TOOLS WIDGET                    #
 # ---------------------------------------------------------------------------- #
 
 def execute_view_pan(context: Context, button: Button) -> ModalReturnType:
-    bpy.ops.heavypoly.view_pan_modal('INVOKE_DEFAULT')
+    bpy.ops.navigation_puck.view_pan_modal('INVOKE_DEFAULT')
     return {'FINISHED'}
 
 
 def execute_view_orbit(context: Context, button: Button) -> ModalReturnType:
-    bpy.ops.heavypoly.view_orbit_modal('INVOKE_DEFAULT')
+    bpy.ops.navigation_puck.view_orbit_modal('INVOKE_DEFAULT')
     return {'FINISHED'}
 
 
 def execute_view_zoom(context: Context, button: Button) -> ModalReturnType:
-    bpy.ops.heavypoly.view_zoom_modal('INVOKE_DEFAULT')
+    bpy.ops.navigation_puck.view_zoom_modal('INVOKE_DEFAULT')
     return {'FINISHED'}
 
 
 def execute_view_roll(context: Context, button: Button) -> ModalReturnType:
-    bpy.ops.heavypoly.view_roll_modal('INVOKE_DEFAULT')
+    bpy.ops.navigation_puck.view_roll_modal('INVOKE_DEFAULT')
     return {'FINISHED'}
 
 
-class HEAVYPOLY_OT_view_tools_widget(BaseWidgetOperator):
+class NAVIGATION_PUCK_OT_view_tools_widget(BaseWidgetOperator):
     """Display floating view tools widget at mouse position"""
-    bl_idname = "heavypoly.view_tools_widget"
+    bl_idname = "navigation_puck.view_tools_widget"
     bl_label = "View Tools Widget"
 
     @classmethod
@@ -346,8 +352,7 @@ class HEAVYPOLY_OT_view_tools_widget(BaseWidgetOperator):
             Button(label="Pan", icon='VIEW_PAN', callback=execute_view_pan),
             Button(label="Orbit", icon='SPHERE', callback=execute_view_orbit),
             Button(label="Zoom", icon='VIEW_ZOOM', callback=execute_view_zoom),
-            Button(label="Roll", icon='MESH_CIRCLE',
-                   callback=execute_view_roll)
+            Button(label="Roll", icon='MESH_CIRCLE', callback=execute_view_roll)
         ]
 
     def setup(self, context: Context, event: Event) -> None:
@@ -362,56 +367,7 @@ class HEAVYPOLY_OT_view_tools_widget(BaseWidgetOperator):
         self.drawer.button_hover_color = (0.4, 0.4, 0.6, 1.0)
 
 
-# ---------------------------------------------------------------------------- #
-#                        REGISTRATION & OTHER OPTIONS                          #
-# ---------------------------------------------------------------------------- #
-
-def execute_move(context: Context, button: Button) -> ModalReturnType:
-    bpy.ops.wm.tool_set_by_id(name="builtin.move")
-    return {'FINISHED'}
-
-
-def execute_rotate(context: Context, button: Button) -> ModalReturnType:
-    bpy.ops.wm.tool_set_by_id(name="builtin.rotate")
-    return {'FINISHED'}
-
-
-def execute_scale(context: Context, button: Button) -> ModalReturnType:
-    bpy.ops.wm.tool_set_by_id(name="builtin.scale")
-    return {'FINISHED'}
-
-# Example of creating another widget
-
-
-class HEAVYPOLY_OT_transform_tools_widget(BaseWidgetOperator):
-    """Display transformation tools widget"""
-    bl_idname = "heavypoly.transform_tools_widget"
-    bl_label = "Transform Tools Widget"
-
-    @classmethod
-    def setup_buttons(cls) -> None:
-        """Set up transform tool buttons"""
-        cls.buttons = [
-            Button(label="Move", icon='ARROW', callback=execute_move),
-            Button(label="Rotate", icon='DRIVER_ROTATIONAL_DIFFERENCE',
-                   callback=execute_rotate),
-            Button(label="Scale", icon='FULLSCREEN_ENTER',
-                   callback=execute_scale),
-        ]
-
-    def setup(self, context: Context, event: Event) -> None:
-        """Customize the widget appearance"""
-        # Use a horizontal layout for transform tools
-        self.widget_layout = WidgetLayout(LayoutType.HORIZONTAL)
-        self.widget_layout.spacing = 5.0
-
-        # Customize colors
-        self.drawer.button_color = (0.4, 0.2, 0.2, 1.0)
-        self.drawer.button_hover_color = (0.6, 0.3, 0.3, 1.0)
-
-
 # Registration
 classes = (
-    HEAVYPOLY_OT_view_tools_widget,
-    HEAVYPOLY_OT_transform_tools_widget,
+    NAVIGATION_PUCK_OT_view_tools_widget,
 )
