@@ -30,10 +30,6 @@ def register_keymaps():
             value="PRESS",
         )
 
-        # Set the pie menu to call
-        if kmi.properties is None:
-            return
-
         # Store the keymap to remove it later
         addon_keymaps.append((km, kmi))
 
