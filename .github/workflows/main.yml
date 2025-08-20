@@ -1,8 +1,29 @@
-   - uses: vimtor/action-zip@v1.2
-      with:
-        files: |
-          src/
-          __init__.py
-          auto_load.py
-          blender_manifest.toml
-        dest: <repository_name>.zip
+name: Create Release and Upload Asset
+on:
+   push:
+      tags:
+         - "v*.*.*" # Matches tags like v1.0.0, v1.2.3
+         - "v*.*"   # Matches tags like v1.0, v1.2
+
+jobs:
+   build-and-release:
+    # The type of runner that the job will run on
+      runs-on: ubuntu-latest
+      permissions:
+         contents: write
+
+      steps:
+         - name: Checkout code
+           uses: actions/checkout@v4
+         - name: Create ZIP Archive
+           run: |
+             zip -r navigation_puck_addon.zip __init__.py auto_load.py blender_manifest.toml src/ -x "*.git*"
+         - name: Create Release and Upload Asset
+           uses: softprops/action-gh-release@v2
+           with:
+              files: navigation_puck_addon.zip
+              name: "Release ${{ github.ref_name }}"
+              draft: false
+              prerelease: false
+           env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
