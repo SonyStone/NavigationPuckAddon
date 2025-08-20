@@ -3,8 +3,6 @@ from .panels.view_tools_widget import NAVIGATION_PUCK_OT_view_tools_widget
 from .. import __name__ as addon_name
 import rna_keymap_ui
 
-print(f"🤣 Registering preferences for {addon_name}")
-
 class NavigationPuckPreferences(bpy.types.AddonPreferences):
     """Preferences for the Navigation Puck addon."""
     # The `bl_idname` must match the addon module name in `bl_info`
