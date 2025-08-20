@@ -5,8 +5,7 @@ This module handles the registration and unregistration of keymaps for the addon
 
 import bpy
 
-from src.panels.view_tools_widget import NAVIGATION_PUCK_OT_view_tools_widget
-from .. import __name__ as addon_name
+from .panels.view_tools_widget import NAVIGATION_PUCK_OT_view_tools_widget
 
 addon_keymaps: list[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]] = []
 
