@@ -11,12 +11,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-import bpy  # type: ignore
-
 from . src import operators, panels, preferences
 from . src.keymap import register_keymaps, unregister_keymaps
 
-bl_info = {
+bl_info = { # type: ignore
     "name": "Navigation Puck Addon",
     "author": "Ilya",
     "version": (1, 0, 0),
@@ -32,6 +30,7 @@ bl_info = {
 # Update register and unregister functions to include preferences
 
 def register():
+    """Register all components of the addon."""
     preferences.register()
     operators.register()
     panels.register()
@@ -39,6 +38,7 @@ def register():
 
 
 def unregister():
+    """Unregister all components of the addon."""
     unregister_keymaps()
     panels.unregister()
     operators.unregister()
