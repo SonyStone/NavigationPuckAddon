@@ -10,6 +10,44 @@ import gpu_extras
 
 from ..utils.operator_return import OperatorReturnType
 
+@dataclasses.dataclass
+class WidgetRect:
+    """Simple rectangle class for any widget bounds"""
+    rect: typing.Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # x, y, width, height
+    enable: bool = True
+
+    @property
+    def x(self) -> float:
+        """X position of the button."""
+        return self.rect[0]
+
+    @property
+    def y(self) -> float:
+        """Y position of the button."""
+        return self.rect[1]
+
+    @property
+    def width(self) -> float:
+        """Width of the button."""
+        return self.rect[2]
+
+
+    @property
+    def height(self) -> float:
+        """Height of the button."""
+        return self.rect[3]
+
+    def contains_point(self, x: float, y: float) -> bool:
+        """Check if this button contains the given point.
+
+        Args:
+            x (float): The x-coordinate of the point.
+            y (float): The y-coordinate of the point.
+
+        Returns:
+            bool: True if the point is within the button's bounds, False otherwise.
+        """
+        return (self.x <= x <= self.x + self.width and self.y <= y <= self.y + self.height)
 
 @dataclasses.dataclass
 class Button:
@@ -31,41 +69,11 @@ class Button:
     callback: typing.Optional[typing.Callable[[
         bpy.types.Context, 'Button'], OperatorReturnType]] = None
     icon_value: int = 0
-    position: typing.Tuple[float, float] = (0, 0)
-    size: typing.Tuple[float, float] = (60.0, 60.0)
+    rect: WidgetRect = dataclasses.field(
+        default_factory=lambda: WidgetRect(rect=(0.0, 0.0, 60.0, 60.0))
+    )
     data: typing.Dict[str, typing.Any] = dataclasses.field(default_factory=dict)  # type: ignore
 
-    @property
-    def x(self) -> float:
-        """X position of the button."""
-        return self.position[0]
-
-    @property
-    def y(self) -> float:
-        """Y position of the button."""
-        return self.position[1]
-
-    @property
-    def width(self) -> float:
-        """Width of the button."""
-        return self.size[0]
-
-    @property
-    def height(self) -> float:
-        """Height of the button."""
-        return self.size[1]
-
-    def contains_point(self, x: float, y: float) -> bool:
-        """Check if this button contains the given point.
-
-        Args:
-            x (float): The x-coordinate of the point.
-            y (float): The y-coordinate of the point.
-
-        Returns:
-            bool: True if the point is within the button's bounds, False otherwise.
-        """
-        return (self.x <= x <= self.x + self.width and self.y <= y <= self.y + self.height)
 
 
 class LayoutType(enum.Enum):
@@ -119,18 +127,15 @@ class WidgetLayout:
 
             for i, pos in enumerate(positions):
                 if i < len(buttons):
-                    buttons[i].position = pos
-                    buttons[i].size = (width, height)
+                    buttons[i].rect.rect = (pos[0], pos[1], width, height)
 
         elif self.layout_type == LayoutType.HORIZONTAL:
             for i, button in enumerate(buttons):
-                button.position = (x + i * (width + spacing), y)
-                button.size = (width, height)
+                button.rect.rect = (x + i * (width + spacing), y, width, height)
 
         elif self.layout_type == LayoutType.VERTICAL:
             for i, button in enumerate(buttons):
-                button.position = (x, y + i * (height + spacing))
-                button.size = (width, height)
+                button.rect.rect = (x, y + i * (height + spacing), width, height)
 
         elif self.layout_type == LayoutType.CIRCLE:
             count = len(buttons)
@@ -139,11 +144,16 @@ class WidgetLayout:
 
             for i, button in enumerate(buttons):
                 angle = i * angle_step
-                button.position = (
+                button.rect.rect = (
                     x + radius * math.cos(angle) - width/2,
-                    y + radius * math.sin(angle) - height/2
+                    y + radius * math.sin(angle) - height/2,
+                    width,
+                    height
                 )
-                button.size = (width, height)
+
+    def hovered(self) -> bool:
+        """Check if any button is hovered (placeholder)"""
+        return False
 
 
 class WidgetDrawer:
@@ -158,8 +168,7 @@ class WidgetDrawer:
 
     def draw_button(self, button: Button, is_hovered: bool = False) -> None:
         """Draw a single button with background and text"""
-        x, y = button.position
-        width, height = button.size
+        x, y, width, height = button.rect.rect
 
         # Set up shader
         shader = gpu.shader.from_builtin('UNIFORM_COLOR')

@@ -67,8 +67,8 @@ class WidgetHandler:
     handler = DrawHandler()
 
     widget_layout = WidgetLayout(spacing=0.0, layout_type=LayoutType.GRID)
+    widget_drawer = WidgetDrawer()
 
-    drawer = WidgetDrawer()
     buttons: typing.List[Button] = [
         Button(label="Pan", icon='VIEW_PAN', callback=execute_view_pan),
         Button(label="Orbit", icon='SPHERE', callback=execute_view_orbit),
@@ -135,14 +135,14 @@ class WidgetHandler:
 
     def draw_callback(self, op: typing.Any, context: bpy.types.Context) -> None:
         """Draw callback for the widget."""
-        self.drawer.draw_widget(self.buttons, self.hovered_button)
+        self.widget_drawer.draw_widget(self.buttons, self.hovered_button)
 
     def _update_hovered_button(self, context: bpy.types.Context) -> None | OperatorReturnType:
         """Update which button is currently hovered"""
         x, y = self.mouse_pos
 
         for i, button in enumerate(self.buttons):
-            if button.contains_point(x, y):
+            if button.rect.contains_point(x, y):
                 self.hovered_button = i
                 return
 

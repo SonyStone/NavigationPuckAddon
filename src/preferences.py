@@ -6,7 +6,7 @@ This module defines the addon preferences, including keybinding customization.
 import bpy
 import rna_keymap_ui
 
-from .. import __package__ as base_package # type: ignore
+from .. import __package__ as base_package
 from .panels.view_tools_widget import NavigationPuckViewToolsWidget
 
 
