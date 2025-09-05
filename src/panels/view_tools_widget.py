@@ -2,6 +2,7 @@ import math
 import typing
 import bpy
 
+from ..utils.draw_handler import DrawHandler
 from ..utils.operator_return import OperatorReturn, OperatorReturnType
 
 from .ui_tools import Button, LayoutType, WidgetDrawer, WidgetLayout
@@ -40,24 +41,6 @@ def execute_view_roll(context: bpy.types.Context, button: Button) -> OperatorRet
     ops.navigation_puck.view_roll_modal('INVOKE_DEFAULT')
     return OperatorReturn.FINISHED
 
-
-class DrawHandler:
-    """Manages the SpaceView3D draw_handler for the widget"""
-    handler: typing.Optional[typing.Any] = None
-
-    def add_handler(self, context: bpy.types.Context, callback: typing.Callable[[typing.Any, bpy.types.Context], None]) -> None:
-        """Add a draw handler if not already added"""
-        args = (self, context)
-
-        if self.handler is None:
-            self.handler = bpy.types.SpaceView3D.draw_handler_add(callback, args, 'WINDOW', 'POST_PIXEL')
-
-    def remove_handler(self) -> None:
-        """Remove the draw handler"""
-        if self.handler:
-            bpy.types.SpaceView3D.draw_handler_remove(self.handler, 'WINDOW')
-            self.handler = None
-
 class WidgetHandler:
     """Handles the widget state and interaction"""
     mouse_pos: typing.Tuple[float, float] = (0, 0)
@@ -89,7 +72,7 @@ class WidgetHandler:
             (60.0, 60.0)  # Default button size
         )
 
-        self.handler.add_handler(context, self.draw_callback)
+        self.handler.add(context, self.draw_callback)
 
     def update_hovered_button(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType | None:
         """Update which button is currently hovered"""
@@ -98,7 +81,7 @@ class WidgetHandler:
 
         # Update hover state
         if self._update_hovered_button(context) is not None:
-            self.handler.remove_handler()
+            self.handler.remove()
             force_redraw(context)
             return OperatorReturn.CANCELLED
 
@@ -125,7 +108,7 @@ class WidgetHandler:
 
     def cancel(self) -> None:
         """Clean up when cancelled"""
-        self.handler.remove_handler()
+        self.handler.remove()
 
     def on_button_clicked(self, button: Button, context: bpy.types.Context) -> OperatorReturnType:
         """Handle button click. Override in subclasses to customize behavior."""
@@ -150,7 +133,7 @@ class WidgetHandler:
         orig_x, orig_y = self.initial_mouse_pos
         distance = math.sqrt((x - orig_x)**2 + (y - orig_y)**2)
         if distance > self.auto_dismiss_distance:
-            self.handler.remove_handler()
+            self.handler.remove()
             # self.on_cancel(context)
             return OperatorReturn.CANCELLED
 
@@ -167,6 +150,7 @@ class NavigationPuckViewToolsWidget(bpy.types.Operator):
     # Override Operator method
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Start the modal operator and initialize widget"""
+        print("😄 Invoking View Tools Widget Operator")
 
         self.widget.setup(context, event)
 
@@ -182,6 +166,7 @@ class NavigationPuckViewToolsWidget(bpy.types.Operator):
     # Override Operator method
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Handle widget events"""
+        print("💫 Running View Tools Widget Modal")
 
         result = self.widget.update_hovered_button(context, event)
         if result is not None:
@@ -199,10 +184,5 @@ class NavigationPuckViewToolsWidget(bpy.types.Operator):
     # Override Operator method
     def cancel(self, context: bpy.types.Context) -> None:
         """Clean up when cancelled"""
+        print("🛑 Cancelling View Tools Widget Operator")
         self.widget.cancel()
-
-
-# Registration
-classes = (
-    NavigationPuckViewToolsWidget,
-)

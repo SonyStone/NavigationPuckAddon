@@ -11,6 +11,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+import bpy
+
 from . src import operators, panels, preferences
 from . src.keymap import register_keymaps, unregister_keymaps
 
@@ -29,20 +31,26 @@ bl_info = { # type: ignore
 
 # Update register and unregister functions to include preferences
 
+classes = (
+    *preferences.classes,
+    *operators.classes,
+    *panels.classes,
+)
+
 def register():
     """Register all components of the addon."""
-    preferences.register()
-    operators.register()
-    panels.register()
+    for cls in classes:
+        bpy.utils.register_class(cls)
+
     register_keymaps()
 
 
 def unregister():
     """Unregister all components of the addon."""
     unregister_keymaps()
-    panels.unregister()
-    operators.unregister()
-    preferences.unregister()
+
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)
 
 
 if __name__ == "__main__":

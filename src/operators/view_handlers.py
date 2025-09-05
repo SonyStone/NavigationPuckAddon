@@ -241,6 +241,10 @@ class ViewPanHandler:
         apply_view_pan(context, delta_pos)
         self.prev_pos = current_pos
 
+    def pan_view(self, context: bpy.types.Context, delta: mathutils.Vector) -> None:
+        """Pan the view by a given delta vector"""
+        apply_view_pan(context, delta)
+
 
 class CameraPanHandler:
     """Handler for panning the camera (camera view mode)"""
@@ -334,13 +338,13 @@ class CameraZoomHandler:
 # Orbit handler functions
 
 
-def apply_view_orbit(context: bpy.types.Context, delta: mathutils.Vector, event: bpy.types.Event, sensitivity: float = 0.005) -> None:
+def apply_view_orbit(context: bpy.types.Context, delta: mathutils.Vector, shift: bool, sensitivity: float = 0.005) -> None:
     """Apply orbit to the view"""
     rv3d = ViewHandler.get_region_view3d(context)
     euler = rv3d.view_rotation.to_euler('XYZ')
     snap_angle = math.radians(15.0)
 
-    if event.shift:
+    if shift:
         rot_z = delta.x * sensitivity
         rot_x = -delta.y * sensitivity
 

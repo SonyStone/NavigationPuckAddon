@@ -6,8 +6,9 @@ This module defines the addon preferences, including keybinding customization.
 import bpy
 import rna_keymap_ui
 
+from .panels import CURRENT_MAIN_WIDGET
+
 from .. import __package__ as base_package
-from .panels.view_tools_widget import NavigationPuckViewToolsWidget
 
 
 class NavigationPuckPreferences(bpy.types.AddonPreferences):
@@ -27,22 +28,10 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
             km = kc.keymaps.get("3D View")
             if km:
                 for kmi in km.keymap_items:
-                    if kmi.idname == NavigationPuckViewToolsWidget.bl_idname:
+                    if kmi.idname == CURRENT_MAIN_WIDGET.bl_idname:
                         rna_keymap_ui.draw_kmi([], kc, km, kmi, layout, 0) # type: ignore
 
 
 classes = (
     NavigationPuckPreferences,
 )
-
-
-def register():
-    """Register classes."""
-    for cls in classes:
-        bpy.utils.register_class(cls)
-
-
-def unregister():
-    """Unregister classes."""
-    for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)

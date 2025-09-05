@@ -5,7 +5,7 @@ This module handles the registration and unregistration of keymaps for the addon
 
 import bpy
 
-from .panels.view_tools_widget import NavigationPuckViewToolsWidget
+from .panels import CURRENT_MAIN_WIDGET
 
 addon_keymaps: list[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]] = []
 
@@ -25,7 +25,7 @@ def register_keymaps():
 
         # Add a new keymap item with the customizable keybinding
         kmi = km.keymap_items.new(
-            NavigationPuckViewToolsWidget.bl_idname,
+            CURRENT_MAIN_WIDGET.bl_idname,
             type="V",
             value="PRESS",
         )
