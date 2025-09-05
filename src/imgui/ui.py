@@ -65,7 +65,8 @@ class UI:
         icon: str,
         pos: typing.Tuple[float, float],
         size: typing.Tuple[float, float],
-        widget_id: typing.Optional[str] = None
+        widget_id: typing.Optional[str] = None,
+        is_image_path: bool = False
     ) -> WidgetResponse:
         """Create an icon button widget"""
         if widget_id is None:
@@ -87,19 +88,37 @@ class UI:
         self.painter.draw_rect(rect, color)
 
         # Draw border
-        self.painter.draw_rect_outline(
-            rect, self.theme.border, self.theme.border_width)
+        # self.painter.draw_rect_outline(
+        #     rect, self.theme.border, self.theme.border_width)
 
-        # For now, just draw icon name as text
-        # In a full implementation, you'd draw the actual icon
-        text_size = self.painter.get_text_size(icon)
-        text_pos = (
-            rect.x + (rect.width - text_size[0]) * 0.5,
-            rect.y + (rect.height - text_size[1]) * 0.5
-        )
-        self.painter.draw_text(icon, text_pos, self.theme.text)
+        if is_image_path:
+            # Draw image icon centered in the button
+            icon_size = (size[0] * 0.8, size[1] * 0.8)  # Make icon 80% of button size
+            icon_pos = (
+                rect.x + (rect.width - icon_size[0]) * 0.5,
+                rect.y + (rect.height - icon_size[1]) * 0.5
+            )
+            self.painter.draw_image(icon, icon_pos, icon_size)
+        else:
+            # Draw icon name as text
+            text_size = self.painter.get_text_size(icon)
+            text_pos = (
+                rect.x + (rect.width - text_size[0]) * 0.5,
+                rect.y + (rect.height - text_size[1]) * 0.5
+            )
+            self.painter.draw_text(icon, text_pos, self.theme.text)
 
         return response
+
+    def image_button(
+        self,
+        image_path: str,
+        pos: typing.Tuple[float, float],
+        size: typing.Tuple[float, float],
+        widget_id: typing.Optional[str] = None
+    ) -> WidgetResponse:
+        """Create a button with an image icon"""
+        return self.icon_button(image_path, pos, size, widget_id, is_image_path=True)
 
     def panel(
         self,

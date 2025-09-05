@@ -1,8 +1,9 @@
 import typing
 import bpy
 import mathutils
+import os
 
-from ..operators.view_handlers import ViewPanHandler, apply_view_orbit, apply_view_pan, apply_view_zoom
+from ..operators.view_handlers import apply_view_orbit, apply_view_pan, apply_view_zoom
 
 from ..imgui.ui import UI
 
@@ -89,7 +90,7 @@ class TestImguiWidget(bpy.types.Operator):
         TestImguiWidget.force_redraw(context)
         return OperatorReturn.RUNNING_MODAL
 
-    def draw_callback(self, op: typing.Any, context: bpy.types.Context) -> None:
+    def draw_callback(self, _op: typing.Any, context: bpy.types.Context) -> None:
         """
         Draw shaders UI for viewport overlay
 
@@ -103,8 +104,12 @@ class TestImguiWidget(bpy.types.Operator):
         self.ui.ctx.begin_frame(self.mouse_pos)
 
         x, y = self.initial_mouse_pos
+        
+        # Get the path to the move.png icon
+        addon_dir = os.path.dirname(os.path.dirname(__file__))
+        move_icon_path = os.path.join(addon_dir, "move.png")
 
-        response = self.ui.button("Pan", (x -41, y - 41), (40, 40))
+        response = self.ui.image_button(move_icon_path, (x -41, y - 41), (40, 40))
         if response.dragged:
             # apply_view_pan(context, response.drag_delta)
             self.is_active = True

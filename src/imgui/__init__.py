@@ -66,7 +66,7 @@ class Theme:
 
     # Colors (RGBA)
     background = (0.15, 0.15, 0.15, 0.95)
-    button_idle = (0.25, 0.25, 0.25, 1.0)
+    button_idle = (0.25, 0.25, 0.25, 0.5)
     button_hovered = (0.35, 0.35, 0.45, 1.0)
     button_active = (0.45, 0.45, 0.55, 1.0)
     text = (0.9, 0.9, 0.9, 1.0)
