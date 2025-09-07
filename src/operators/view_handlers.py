@@ -13,9 +13,9 @@ from ..utils import get_current_mouse_position, get_mouse_vector_to_center, snap
 # Common utility functions
 
 
-def apply_angle_snapping(delta_angle: float, initial_angle: float, event: bpy.types.Event, snap_angle: float = math.radians(15.0)) -> float:
+def apply_angle_snapping(delta_angle: float, initial_angle: float, shift: bool, snap_angle: float = math.radians(15.0)) -> float:
     """Apply angle snapping if shift is pressed"""
-    if event.shift:
+    if shift:
         return snap_to_nearest_angle(delta_angle, initial_angle, snap_angle)
     return delta_angle
 
@@ -147,17 +147,19 @@ class ViewRollHandler:
         """Initialize the view roll handler."""
         self.rotation = ViewHandler.get_current_view_rotation(context).copy()
         self.initial_angle = ViewHandler.get_current_roll_angle(context)
-        self.initial_vector = get_mouse_vector_to_center(context, event)
+        pointer_position = get_current_mouse_position(event)
+        self.initial_vector = get_mouse_vector_to_center(context, pointer_position)
 
     def pointer_move(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
         """Update the view roll based on mouse movement."""
         if self.initial_vector is None or self.rotation is None:
             return
 
-        current_vector = get_mouse_vector_to_center(context, event)
+        pointer_position = get_current_mouse_position(event)
+        current_vector = get_mouse_vector_to_center(context, pointer_position)
         delta_angle = self.initial_vector.angle_signed(current_vector)
         delta_angle = apply_angle_snapping(
-            delta_angle, self.initial_angle, event)
+            delta_angle, self.initial_angle, event.shift)
 
         apply_view_roll(context, self.rotation, delta_angle)
 
@@ -177,14 +179,16 @@ class CameraRollHandler:
         if self.camera:
             self.initial_rotation = self.camera.rotation_euler.copy()
             self.initial_angle = ViewHandler.get_current_roll_angle(context)
-            self.initial_vector = get_mouse_vector_to_center(context, event)
+            pointer_position = get_current_mouse_position(event)
+            self.initial_vector = get_mouse_vector_to_center(context, pointer_position)
 
     def pointer_move(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
         """Update the camera roll based on mouse movement."""
         if self.initial_rotation is None or self.initial_vector is None:
             return
 
-        current_vector = get_mouse_vector_to_center(context, event)
+        pointer_position = get_current_mouse_position(event)
+        current_vector = get_mouse_vector_to_center(context, pointer_position)
         delta_angle = self.initial_vector.angle_signed(current_vector)
         delta_angle = apply_angle_snapping(
             delta_angle, self.initial_angle, event)
@@ -338,7 +342,7 @@ class CameraZoomHandler:
 # Orbit handler functions
 
 
-def apply_view_orbit(context: bpy.types.Context, delta: mathutils.Vector, shift: bool, sensitivity: float = 0.005) -> None:
+def apply_view_orbit(context: bpy.types.Context, delta: mathutils.Vector, shift: bool = False, sensitivity: float = 0.005) -> None:
     """Apply orbit to the view"""
     rv3d = ViewHandler.get_region_view3d(context)
     euler = rv3d.view_rotation.to_euler('XYZ')

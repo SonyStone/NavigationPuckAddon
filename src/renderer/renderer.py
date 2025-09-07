@@ -2,7 +2,6 @@
 High-level interface for drawing operations with batching support
 """
 import typing
-import blf
 import bpy
 
 from .draw_protocol import DrawProtocol
@@ -10,8 +9,6 @@ from .image_render_command import ImageRenderCommand
 from .text_renderer_command import TextRendererCommand
 from .draw_rectangle_command import DrawRectangleCommand
 
-from .. import Theme
-from ..rect import Rect
 from .renderer_batch import RendererBatch
 from .rect_outline_command import RectOutlineCommand
 
@@ -19,10 +16,8 @@ from .rect_outline_command import RectOutlineCommand
 class Renderer:
     """High-level interface for drawing operations with batching support"""
 
-    def __init__(self, theme: Theme):
-        self.theme = theme
+    def __init__(self):
         self.batch = RendererBatch()
-        self._batching_enabled = False
 
     def draw(self):
         """Execute all batched draw operations"""
@@ -37,7 +32,7 @@ class Renderer:
 
     def add_rect(
         self,
-        rect: Rect,
+        rect: tuple[float, float, float, float],
         color: tuple[float, float, float, float]
     ):
         """Draw a filled rectangle"""
@@ -45,7 +40,7 @@ class Renderer:
 
     def add_rect_outline(
         self,
-        rect: Rect,
+        rect: tuple[float, float, float, float],
         outline_color: tuple[float, float, float, float],
         fill_color: tuple[float, float, float, float],
         width: float = 1.0
@@ -71,13 +66,3 @@ class Renderer:
     ):
         """Draw an image at the specified position"""
         self.batch.add(ImageRenderCommand(image, pos, size))
-
-    def get_text_size(
-        self,
-        text: str
-    ) -> tuple[float, float]:
-        """Calculate text dimensions"""
-        font_id = 0
-        blf.size(font_id, self.theme.font_size)
-        width, height = blf.dimensions(font_id, text)
-        return (width, height)

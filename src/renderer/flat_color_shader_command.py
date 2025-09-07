@@ -25,6 +25,10 @@ class FlatColorShaderCommand(DrawProtocol):
 
     def draw(self):
         """Draw the rectangle using the FLAT_COLOR shader"""
+        
+        gpu.state.blend_set('ALPHA')
+        gpu.state.depth_test_set('NONE')
+        
         shader: gpu.types.GPUShader = gpu.shader.from_builtin('FLAT_COLOR')
 
         batch = gpu_extras.batch.batch_for_shader(  # type: ignore
@@ -40,6 +44,8 @@ class FlatColorShaderCommand(DrawProtocol):
         shader.bind()
         batch.draw(shader)
 
+
+    # is too slow for large merges
     def __add__(self, other: 'FlatColorShaderCommand') -> 'FlatColorShaderCommand':
         biggest_index = max(max(tri) for tri in self.indices)  # type: ignore
         other_indices_offset = list(tuple( # type: ignore

@@ -1,6 +1,6 @@
 
 # from . import imgui_example
-# from . import view_tools_widget
+from . import view_tools_widget
 # from . import test_widget
 from . import test_imgui_widget
 

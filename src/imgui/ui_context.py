@@ -18,9 +18,9 @@ class UIContext:
         self.input_event_adapter = InputEventAdapter()
 
         # Input state
-        self.mouse_pos = (0.0, 0.0)
-        self.last_mouse_pos = (0.0, 0.0)
-        self.mouse_delta = (0.0, 0.0)
+        self.mouse_pos = mathutils.Vector((0.0, 0.0))
+        self.last_mouse_pos = mathutils.Vector((0.0, 0.0))
+        self.mouse_delta = mathutils.Vector((0.0, 0.0))
 
         # Widget state tracking
         self.hovered_id: typing.Optional[str] = None
@@ -42,14 +42,14 @@ class UIContext:
         # Event queue
         self.pending_events: typing.List[PointerEvent] = []
 
-    def begin_frame(self, mouse_pos: tuple[float, float]):
+    def begin_frame(self, mouse_pos: mathutils.Vector):
         """Begin new frame - call this before drawing widgets"""
         self.last_mouse_pos = self.mouse_pos
         self.mouse_pos = mouse_pos
-        self.mouse_delta = (
-            mouse_pos[0] - self.last_mouse_pos[0],
-            mouse_pos[1] - self.last_mouse_pos[1]
-        )
+        self.mouse_delta = mathutils.Vector((
+            mouse_pos.x - self.last_mouse_pos.x,
+            mouse_pos.y - self.last_mouse_pos.y
+        ))
         self.frame_count += 1
 
         # Reset per-frame state

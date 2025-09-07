@@ -59,7 +59,7 @@ class ViewPanOperator(bpy.types.Operator):
             # context.window.cursor_modal_set('NONE')  # ! Hide cursor
             self.handler.pointer_down(context, event)
 
-        context.window_manager.modal_handler_add(self)
+        context.window_manager.modal_handler_add(self) # type: ignore
         return OperatorReturn.RUNNING_MODAL
 
 

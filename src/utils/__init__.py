@@ -39,12 +39,11 @@ def step_value(value: float, step: float) -> float:
         return math.copysign(higher_step, value)
 
 
-def get_mouse_vector_to_center(context: bpy.types.Context, event: bpy.types.Event) -> mathutils.Vector:
+def get_mouse_vector_to_center(context: bpy.types.Context, pointer_position: mathutils.Vector) -> mathutils.Vector:
     """Get the mouse position relative to the center of the viewport"""
 
-    mouse_position = get_current_mouse_position(event)
     viewport_center = get_viewport_center(context)
-    vector = mouse_position - viewport_center
+    vector = pointer_position - viewport_center
     vector.normalize()
     return vector
 

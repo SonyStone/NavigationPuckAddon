@@ -8,6 +8,7 @@ import dataclasses
 import typing
 import time
 import bpy
+import blf
 import mathutils
 
 from .input_event import EventType, PointerEvent, PointerButton
@@ -53,6 +54,16 @@ class Theme:
     widget_spacing = 4.0
     border_radius = 3.0
     border_width = 1.0
+    
+    def get_text_size(
+        self,
+        text: str
+    ) -> tuple[float, float]:
+        """Calculate text dimensions"""
+        font_id = 0
+        blf.size(font_id, self.font_size)
+        width, height = blf.dimensions(font_id, text)
+        return (width, height)
 
 
 class InputEventAdapter:

@@ -1,9 +1,12 @@
 import typing
 import bpy
+import mathutils
+
+from ..renderer.rect_outline_command import RectOutlineCommand
 
 from . import Theme, WidgetResponse, WidgetState
 from .rect import Rect
-from .renderer import Renderer
+from ..renderer import Renderer
 from .ui_context import UIContext
 
 class UniqueID:
@@ -35,9 +38,9 @@ class UI:
     def __init__(self):
         self.theme = Theme()
         self.ctx = UIContext(self.theme)
-        self.renderer = Renderer(self.theme)
+        self.renderer = Renderer()
 
-    def begin_frame(self, mouse_pos: tuple[float, float]):
+    def begin_frame(self, mouse_pos: mathutils.Vector):
         """Begin UI frame with batching"""
         self.ctx.begin_frame(mouse_pos)
 
@@ -75,7 +78,7 @@ class UI:
 
         # Draw text
         if text:
-            text_size = self.renderer.get_text_size(text)
+            text_size = self.theme.get_text_size(text)
             text_pos = (
                 rect.x + (rect.width - text_size[0]) * 0.5,
                 rect.y + (rect.height - text_size[1]) * 0.5
@@ -107,12 +110,7 @@ class UI:
         else:
             color = self.theme.button_idle
 
-        # Draw button background
-        self.renderer.add_rect(rect, color)
-
-        # Draw border
-        # self.painter.draw_rect_outline(
-        #     rect, self.theme.border, self.theme.border_width)
+        self.renderer.add(RectOutlineCommand(rect, outline_color= self.theme.border , fill_color=color, outline_width=self.theme.border_width))
 
         # Draw image icon centered in the button
         icon_size = (size[0] * 0.8, size[1] * 0.8)  # Make icon 80% of button size
