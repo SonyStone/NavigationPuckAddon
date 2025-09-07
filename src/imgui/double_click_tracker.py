@@ -21,7 +21,7 @@ class DoubleClickTracker:
 
     def __init__(self, double_click_time: float = 0.5):
         self.last_click_time: float | None = None
-        self.last_click_pos: typing.Tuple[float, float] | None = None
+        self.last_click_pos: tuple[float, float] | None = None
         self.last_click_id: typing.Optional[str] = None
         self.double_click_time = double_click_time  # seconds
         self.double_click_distance = 5  # pixels

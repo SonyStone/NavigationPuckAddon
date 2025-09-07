@@ -43,21 +43,23 @@ def execute_view_roll(context: bpy.types.Context, button: Button) -> OperatorRet
 
 class WidgetHandler:
     """Handles the widget state and interaction"""
-    mouse_pos: typing.Tuple[float, float] = (0, 0)
-    initial_mouse_pos: typing.Tuple[float, float] = (0, 0)
-    hovered_button: typing.Optional[int] = None
-    auto_dismiss_distance: float = 100.0
-    handler = DrawHandler()
+    
+    def __init__(self):
+        self.mouse_pos: tuple[float, float] = (0, 0)
+        self.initial_mouse_pos: tuple[float, float] = (0, 0)
+        self.hovered_button: typing.Optional[int] = None
+        self.auto_dismiss_distance: float = 100.0
+        self.handler = DrawHandler()
 
-    widget_layout = WidgetLayout(spacing=0.0, layout_type=LayoutType.GRID)
-    widget_drawer = WidgetDrawer()
+        self.widget_layout = WidgetLayout(spacing=0.0, layout_type=LayoutType.GRID)
+        self.widget_drawer = WidgetDrawer()
 
-    buttons: typing.List[Button] = [
-        Button(label="Pan", icon='VIEW_PAN', callback=execute_view_pan),
-        Button(label="Orbit", icon='SPHERE', callback=execute_view_orbit),
-        Button(label="Zoom", icon='VIEW_ZOOM', callback=execute_view_zoom),
-        Button(label="Roll", icon='MESH_CIRCLE', callback=execute_view_roll)
-    ]
+        self.buttons: typing.List[Button] = [
+            Button(label="Pan", icon='VIEW_PAN', callback=execute_view_pan),
+            Button(label="Orbit", icon='SPHERE', callback=execute_view_orbit),
+            Button(label="Zoom", icon='VIEW_ZOOM', callback=execute_view_zoom),
+            Button(label="Roll", icon='MESH_CIRCLE', callback=execute_view_roll)
+        ]
 
     def setup(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
         """Customize the widget appearance"""

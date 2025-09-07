@@ -13,7 +13,7 @@ from ..utils.operator_return import OperatorReturnType
 @dataclasses.dataclass
 class WidgetRect:
     """Simple rectangle class for any widget bounds"""
-    rect: typing.Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # x, y, width, height
+    rect: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # x, y, width, height
     enable: bool = True
 
     @property
@@ -88,12 +88,9 @@ class LayoutType(enum.Enum):
 class WidgetLayout:
     """Handles layout calculations for widget buttons"""
 
-    spacing = 0.0
-    layout_type = LayoutType.GRID
-
     def __init__(self, spacing: float = 0.0, layout_type: LayoutType = LayoutType.GRID):
-        self.spacing = spacing
-        self.layout_type = layout_type
+        self.spacing: float = spacing
+        self.layout_type: LayoutType = layout_type
 
     def set_spacing(self, spacing: float) -> typing.Self:
         """Set spacing between buttons"""
@@ -108,8 +105,8 @@ class WidgetLayout:
     def calculate_positions(
         self,
         buttons: typing.List[Button],
-        origin: typing.Tuple[float, float],
-        button_size: typing.Tuple[float, float] = (60.0, 60.0)
+        origin: tuple[float, float],
+        button_size: tuple[float, float] = (60.0, 60.0)
     ) -> None:
         """Calculate positions for buttons based on the layout type and origin"""
         x, y = origin

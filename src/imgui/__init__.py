@@ -13,33 +13,6 @@ import mathutils
 from .input_event import EventType, PointerEvent, PointerButton
 
 
-@dataclasses.dataclass
-class Rect:
-    """Rectangle with position and size"""
-    x: float = 0.0
-    y: float = 0.0
-    width: float = 0.0
-    height: float = 0.0
-
-    def contains(self, x: float, y: float) -> bool:
-        """Check if point is inside rectangle"""
-        return (self.x <= x <= self.x + self.width and
-                self.y <= y <= self.y + self.height)
-
-    def center(self) -> typing.Tuple[float, float]:
-        """Get center point of rectangle"""
-        return (self.x + self.width * 0.5, self.y + self.height * 0.5)
-
-    def expand(self, amount: float) -> 'Rect':
-        """Return expanded rectangle"""
-        return Rect(
-            self.x - amount,
-            self.y - amount,
-            self.width + amount * 2,
-            self.height + amount * 2
-        )
-
-
 class WidgetState(enum.Enum):
     """Widget interaction states"""
     IDLE = enum.auto()
@@ -81,15 +54,17 @@ class Theme:
     border_radius = 3.0
     border_width = 1.0
 
+
 class InputEventAdapter:
     """Adapter to convert Blender events to imgui events"""
 
-    mouse_pos = mathutils.Vector((0.0, 0.0))
-    last_mouse_pos = mathutils.Vector((0.0, 0.0))
-    mouse_delta = mathutils.Vector((0.0, 0.0))
+    def __init__(self):
+        self.mouse_pos = mathutils.Vector((0.0, 0.0))
+        self.last_mouse_pos = mathutils.Vector((0.0, 0.0))
+        self.mouse_delta = mathutils.Vector((0.0, 0.0))
 
-    # we only track main button for now
-    pointer_down: typing.Literal[PointerButton.MAIN_BUTTON] | None = None
+        # we only track main button for now
+        self.pointer_down: typing.Literal[PointerButton.MAIN_BUTTON] | None = None
 
     def to_pointer_event(self, event: bpy.types.Event) -> PointerEvent | None:
         """Handle Blender event and convert to imgui event format"""
@@ -97,7 +72,8 @@ class InputEventAdapter:
 
         event_type = EventType.NONE
         button = None
-        delta =  mathutils.Vector((event.mouse_prev_x - event.mouse_x,event.mouse_prev_y -  event.mouse_y))
+        delta = mathutils.Vector(
+            (event.mouse_prev_x - event.mouse_x, event.mouse_prev_y - event.mouse_y))
 
         match event.type:
             case 'MOUSEMOVE':
@@ -123,7 +99,6 @@ class InputEventAdapter:
             case _:
                 pass
 
-
         pointer_event = PointerEvent(
             event_type=event_type,
             position=(event.mouse_region_x, event.mouse_region_y),
@@ -136,4 +111,3 @@ class InputEventAdapter:
         )
 
         return pointer_event
-        

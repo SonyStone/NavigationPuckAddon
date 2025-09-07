@@ -446,8 +446,10 @@ class ViewOrbitHandler:
 class CameraOrbitHandler:
     """Handler for orbiting the camera (camera view mode)"""
 
-    prev_pos: mathutils.Vector | None = None
-    sensitivity: float = 0.005
+
+    def __init__(self):
+        self.prev_pos: mathutils.Vector | None = None
+        self.sensitivity: float = 0.005
 
     def pointer_down(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
         """Initialize the camera orbit handler."""

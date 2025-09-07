@@ -1,29 +1,57 @@
 import typing
+import bpy
 
-from . import Rect, Theme, WidgetResponse, WidgetState
-from .gpu_painter import GPUPainter
+from . import Theme, WidgetResponse, WidgetState
+from .rect import Rect
+from .renderer import Renderer
 from .ui_context import UIContext
 
-def get_widget_id(widget_id: typing.Optional[str], text: str, pos: typing.Tuple[float, float]) -> str:
+class UniqueID:
+    """Simple unique ID generator"""
+    _id = 0
+    
+    @classmethod
+    def reset(cls) -> None:
+        """Reset ID counter to zero"""
+        cls._id = 0
+    
+    @classmethod
+    def get_id(cls) -> str:
+        """Return a new unique ID as a string"""
+        cls._id += 1
+        return str(cls._id)
+
+def get_widget_id(widget_id: typing.Optional[str], text: typing.Optional[str], pos: tuple[float, float]) -> str:
     """Generate a unique widget ID if none provided"""
+    text = text or "widget"
     if widget_id is None:
-        widget_id = f"button_{text}_{pos[0]}_{pos[1]}"
+        widget_id = f"{text}_{pos[0]}_{pos[1]}_{UniqueID.get_id()}"
     return widget_id
 
 
 class UI:
-    """Main UI interface - use this to create widgets"""
+    """Main UI interface - use this to create widgets with batching for performance"""
 
     def __init__(self):
         self.theme = Theme()
         self.ctx = UIContext(self.theme)
-        self.painter = GPUPainter(self.theme)
+        self.renderer = Renderer(self.theme)
+
+    def begin_frame(self, mouse_pos: tuple[float, float]):
+        """Begin UI frame with batching"""
+        self.ctx.begin_frame(mouse_pos)
+
+    def end_frame(self):
+        """End UI frame and flush all batched draws"""
+        self.ctx.end_frame()
+        UniqueID.reset()
+        self.renderer.draw()
 
     def button(
         self,
-        text: str,
-        pos: typing.Tuple[float, float],
-        size: typing.Tuple[float, float],
+        text: typing.Optional[str],
+        pos: tuple[float, float],
+        size: tuple[float, float],
         widget_id: typing.Optional[str] = None
     ) -> WidgetResponse:
         """Create a button widget"""
@@ -42,35 +70,30 @@ class UI:
             case _:
                 color = self.theme.button_idle
 
-        # Draw button background
-        self.painter.draw_rect(rect, color)
-
-        # Draw border
-        self.painter.draw_rect_outline(
-            rect, self.theme.border, self.theme.border_width)
+        # Draw rect
+        self.renderer.add_rect_outline(rect, self.theme.border, color, self.theme.border_width)
 
         # Draw text
-        text_size = self.painter.get_text_size(text)
-        text_pos = (
-            rect.x + (rect.width - text_size[0]) * 0.5,
-            rect.y + (rect.height - text_size[1]) * 0.5
-        )
-        self.painter.draw_text(text, text_pos, self.theme.text)
+        if text:
+            text_size = self.renderer.get_text_size(text)
+            text_pos = (
+                rect.x + (rect.width - text_size[0]) * 0.5,
+                rect.y + (rect.height - text_size[1]) * 0.5
+            )
+            self.renderer.add_text(text, text_pos, self.theme.text)
 
         response = self.ctx.get_widget_response(widget_id, rect)
         return response
 
     def icon_button(
         self,
-        icon: str,
-        pos: typing.Tuple[float, float],
-        size: typing.Tuple[float, float],
+        icon: bpy.types.Image,
+        pos: tuple[float, float],
+        size: tuple[float, float],
         widget_id: typing.Optional[str] = None,
-        is_image_path: bool = False
     ) -> WidgetResponse:
         """Create an icon button widget"""
-        if widget_id is None:
-            widget_id = f"icon_button_{icon}_{pos[0]}_{pos[1]}"
+        widget_id = get_widget_id(widget_id, None, pos)
 
         rect = Rect(pos[0], pos[1], size[0], size[1])
         response = self.ctx.get_widget_response(widget_id, rect)
@@ -85,50 +108,39 @@ class UI:
             color = self.theme.button_idle
 
         # Draw button background
-        self.painter.draw_rect(rect, color)
+        self.renderer.add_rect(rect, color)
 
         # Draw border
         # self.painter.draw_rect_outline(
         #     rect, self.theme.border, self.theme.border_width)
 
-        if is_image_path:
-            # Draw image icon centered in the button
-            icon_size = (size[0] * 0.8, size[1] * 0.8)  # Make icon 80% of button size
-            icon_pos = (
-                rect.x + (rect.width - icon_size[0]) * 0.5,
-                rect.y + (rect.height - icon_size[1]) * 0.5
-            )
-            self.painter.draw_image(icon, icon_pos, icon_size)
-        else:
-            # Draw icon name as text
-            text_size = self.painter.get_text_size(icon)
-            text_pos = (
-                rect.x + (rect.width - text_size[0]) * 0.5,
-                rect.y + (rect.height - text_size[1]) * 0.5
-            )
-            self.painter.draw_text(icon, text_pos, self.theme.text)
+        # Draw image icon centered in the button
+        icon_size = (size[0] * 0.8, size[1] * 0.8)  # Make icon 80% of button size
+        icon_pos = (
+            rect.x + (rect.width - icon_size[0]) * 0.5,
+            rect.y + (rect.height - icon_size[1]) * 0.5
+        )
+        self.renderer.add_image(icon, icon_pos, icon_size)
 
         return response
 
     def image_button(
         self,
-        image_path: str,
-        pos: typing.Tuple[float, float],
-        size: typing.Tuple[float, float],
+        image: bpy.types.Image,
+        pos: tuple[float, float],
+        size: tuple[float, float],
         widget_id: typing.Optional[str] = None
     ) -> WidgetResponse:
         """Create a button with an image icon"""
-        return self.icon_button(image_path, pos, size, widget_id, is_image_path=True)
+        return self.icon_button(image, pos, size, widget_id)
 
     def panel(
         self,
-        pos: typing.Tuple[float, float],
-        size: typing.Tuple[float, float]
+        pos: tuple[float, float],
+        size: tuple[float, float]
     ) -> Rect:
         """Create a panel background"""
         rect = Rect(pos[0], pos[1], size[0], size[1])
-        self.painter.draw_rect(rect, self.theme.background)
-        self.painter.draw_rect_outline(
-            rect, self.theme.border, self.theme.border_width)
+        self.renderer.add_rect_outline(rect, self.theme.border, self.theme.background, self.theme.border_width)
         return rect
 

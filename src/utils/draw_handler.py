@@ -17,7 +17,9 @@ class DrawHandler:
     ```
     For example, if you start the operator, then reload the addon without stopping the operator first.
     """
-    handler: typing.Optional[typing.Any] = None
+    
+    def __init__(self):
+        self.handler: typing.Optional[typing.Any] = None
 
     def add(self, context: bpy.types.Context, callback: typing.Callable[[typing.Any, bpy.types.Context], None]) -> None:
         """
@@ -43,3 +45,8 @@ class DrawHandler:
         if self.handler:
             bpy.types.SpaceView3D.draw_handler_remove(self.handler, 'WINDOW')
             self.handler = None
+            
+def force_redraw(context: bpy.types.Context) -> None:
+    """Force redraw of the 3D view"""
+    if context.area:
+        context.area.tag_redraw()

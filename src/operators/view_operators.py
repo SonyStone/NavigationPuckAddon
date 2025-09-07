@@ -14,8 +14,9 @@ class ViewPanOperator(bpy.types.Operator):
     bl_label = "Pan View (Hold)"
     bl_options = {'REGISTER', 'UNDO'}
 
-    handler = PanHandler()
-    is_pressed: bool
+    def __init__(self):
+        self.handler = PanHandler()
+        self.is_pressed = False
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Handle the modal event for panning the view."""
@@ -68,8 +69,9 @@ class ViewRollOperator(bpy.types.Operator):
     bl_label = "Roll View (Hold)"
     bl_options = {'REGISTER', 'UNDO'}
 
-    handler = RollHandler()
-    is_pressed: bool
+    def __init__(self):
+        self.is_pressed = False
+        self.handler = RollHandler()
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Handle the modal event for rolling the view."""
@@ -113,8 +115,9 @@ class ViewZoomOperator(bpy.types.Operator):
     bl_label = "Zoom View (Hold)"
     bl_options = {'REGISTER', 'UNDO'}
 
-    handler = ZoomHandler()
-    is_pressed: bool
+    def __init__(self):
+        self.is_pressed = False
+        self.handler = ZoomHandler()
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Handle the modal event for zooming the view."""
@@ -158,9 +161,10 @@ class ViewOrbitOperator(bpy.types.Operator):
     bl_idname = "navigation_puck.view_orbit_modal"
     bl_label = "Orbit Vertical (Hold)"
     bl_options = {'REGISTER', 'UNDO'}
-
-    handler = OrbitHandler()
-    is_pressed: bool
+    
+    def __init__(self):
+        self.is_pressed = False
+        self.handler = OrbitHandler()
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Handle the modal event for orbiting the view."""

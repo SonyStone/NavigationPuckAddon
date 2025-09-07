@@ -8,7 +8,6 @@ import dataclasses
 import math
 import typing
 import bpy
-import time
 
 from ..imgui.ui import UI, WidgetResponse
 
@@ -18,7 +17,7 @@ from ..utils.operator_return import OperatorReturnType
 @dataclasses.dataclass
 class WidgetRect:
     """Simple rectangle class for any widget bounds"""
-    rect: typing.Tuple[float, float, float, float] = (
+    rect: tuple[float, float, float, float] = (
         0.0, 0.0, 0.0, 0.0)  # x, y, width, height
     enable: bool = True
 
@@ -70,7 +69,7 @@ class Button:
     """
 
     label: str
-    icon: str = ''
+    icon: typing.Optional[bpy.types.Image] = None
     callback: typing.Optional[typing.Callable[[
         bpy.types.Context, 'Button'], OperatorReturnType]] = None
     icon_value: int = 0
@@ -92,9 +91,6 @@ class LayoutType(enum.Enum):
 class WidgetLayout:
     """Handles layout calculations for widget buttons"""
 
-    spacing = 0.0
-    layout_type = LayoutType.GRID
-
     def __init__(self, spacing: float = 0.0, layout_type: LayoutType = LayoutType.GRID):
         self.spacing = spacing
         self.layout_type = layout_type
@@ -112,8 +108,8 @@ class WidgetLayout:
     def calculate_positions(
         self,
         buttons: typing.List[Button],
-        origin: typing.Tuple[float, float],
-        button_size: typing.Tuple[float, float] = (60.0, 60.0)
+        origin: tuple[float, float],
+        button_size: tuple[float, float] = (60.0, 60.0)
     ) -> None:
         """Calculate positions for buttons based on the layout type and origin"""
         x, y = origin
@@ -157,7 +153,6 @@ class WidgetLayout:
                     height
                 )
 
-
 class EnhancedWidgetDrawer:
     """Enhanced widget drawer using ImGui system for better event handling"""
 
@@ -170,7 +165,7 @@ class EnhancedWidgetDrawer:
         """Handle Blender event and return True if consumed by UI"""
         return self.ui.ctx.handle_event(event)
 
-    def begin_frame(self, mouse_pos: typing.Tuple[float, float]):
+    def begin_frame(self, mouse_pos: tuple[float, float]):
         """Begin drawing frame - call before drawing widgets"""
 
         self.mouse_pos = mouse_pos
@@ -242,7 +237,11 @@ class WidgetDrawer(EnhancedWidgetDrawer):
         self.font_size = 14
         self.text_offset = (5, 15)
 
-    def draw_widget(self, buttons: typing.List[Button], hovered_index: typing.Optional[int] = None) -> typing.Dict[str, WidgetResponse]:
+    def draw_widget(
+        self,
+        buttons: typing.List[Button],
+        hovered_index: typing.Optional[int] = None
+    ) -> typing.Dict[str, WidgetResponse]:
         """Legacy method for backwards compatibility"""
         responses: typing.Dict[str, WidgetResponse] = {}
         for i, button in enumerate(buttons):
@@ -255,35 +254,55 @@ class WidgetDrawer(EnhancedWidgetDrawer):
 class ImGuiWidget:
     """Complete widget system using ImGui for event handling and rendering"""
 
-    def __init__(self, origin: typing.Tuple[float, float] = (0.0, 0.0)):
+    def __init__(
+        self,
+        origin: tuple[float, float] = (0.0, 0.0)
+    ):
         self.layout = WidgetLayout()
         self.drawer = EnhancedWidgetDrawer()
         self.buttons: typing.List[Button] = []
         self.origin = origin
         self.visible = True
 
-    def add_button(self, label: str, icon: str = '',
-                   callback: typing.Optional[typing.Callable[[bpy.types.Context, Button], OperatorReturnType]] = None) -> Button:
+    def add_button(
+        self,
+        label: str,
+        icon: bpy.types.Image,
+        callback: typing.Optional[typing.Callable[[bpy.types.Context, Button], OperatorReturnType]] = None
+    ) -> Button:
         """Add a button to the widget"""
         button = Button(label=label, icon=icon, callback=callback)
         self.buttons.append(button)
         return button
 
-    def set_layout(self, layout_type: LayoutType, spacing: float = 4.0) -> None:
+    def set_layout(
+        self,
+        layout_type: LayoutType,
+        spacing: float = 4.0
+    ) -> None:
         """Set the layout type and spacing"""
         self.layout.set_layout_type(layout_type).set_spacing(spacing)
 
-    def update_layout(self, button_size: typing.Tuple[float, float] = (60.0, 60.0)) -> None:
+    def update_layout(
+        self,
+        button_size: tuple[float, float] = (60.0, 60.0)
+    ) -> None:
         """Update button positions based on current layout"""
         self.layout.calculate_positions(self.buttons, self.origin, button_size)
 
-    def handle_event(self, event: bpy.types.Event) -> bool:
+    def handle_event(
+        self,
+        event: bpy.types.Event
+    ) -> bool:
         """Handle input event"""
         if not self.visible:
             return False
         return self.drawer.handle_event(event)
 
-    def draw(self, mouse_pos: typing.Tuple[float, float]) -> typing.Dict[str, WidgetResponse]:
+    def draw(
+        self,
+        mouse_pos: tuple[float, float]
+    ) -> typing.Dict[str, WidgetResponse]:
         """Draw the widget and return button responses"""
         if not self.visible:
             return {}
@@ -294,9 +313,9 @@ class ImGuiWidget:
 
         return responses
 
-    def get_clicked_buttons(self) -> typing.List[typing.Tuple[Button, WidgetResponse]]:
+    def get_clicked_buttons(self) -> typing.List[tuple[Button, WidgetResponse]]:
         """Get list of buttons that were clicked this frame"""
-        clicked: typing.List[typing.Tuple[Button, WidgetResponse]] = []
+        clicked: typing.List[tuple[Button, WidgetResponse]] = []
         for widget_id, response in self.drawer.responses.items():
             if response.clicked:
                 # Find the corresponding button

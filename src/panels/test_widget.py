@@ -63,6 +63,7 @@ class TestWidget(bpy.types.Operator):
 
             return OperatorReturn.CANCELLED
 
+        # TestWidget.force_redraw(context)
         return OperatorReturn.RUNNING_MODAL
 
     def draw_callback(self, op: typing.Any, context: bpy.types.Context) -> None:
@@ -91,5 +92,6 @@ class TestWidget(bpy.types.Operator):
         color =  (0.3, 0.3, 0.3, 1.0)
         shader.uniform_float("color", color)
 
+        print("🫤 TestWidget::draw_callback")
         batch.draw(shader)  # type: ignore
 

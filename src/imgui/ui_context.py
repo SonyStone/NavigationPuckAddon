@@ -2,7 +2,8 @@ import typing
 import bpy
 import mathutils
 
-from . import InputEventAdapter, Rect, Theme, WidgetResponse, WidgetState
+from . import InputEventAdapter, Theme, WidgetResponse, WidgetState
+from .rect import Rect
 
 from .input_event import EventType, PointerEvent, PointerButton
 
@@ -41,7 +42,7 @@ class UIContext:
         # Event queue
         self.pending_events: typing.List[PointerEvent] = []
 
-    def begin_frame(self, mouse_pos: typing.Tuple[float, float]):
+    def begin_frame(self, mouse_pos: tuple[float, float]):
         """Begin new frame - call this before drawing widgets"""
         self.last_mouse_pos = self.mouse_pos
         self.mouse_pos = mouse_pos

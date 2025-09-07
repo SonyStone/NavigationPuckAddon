@@ -47,3 +47,11 @@ def get_mouse_vector_to_center(context: bpy.types.Context, event: bpy.types.Even
     vector = mouse_position - viewport_center
     vector.normalize()
     return vector
+
+def add_modal_handler(context: bpy.types.Context, operator: bpy.types.Operator) -> bool:
+    """Add a modal handler to the context"""
+    if context.window_manager is not None:
+        context.window_manager.modal_handler_add(operator)
+        return True
+    else:
+        return False

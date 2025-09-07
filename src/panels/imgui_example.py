@@ -17,7 +17,7 @@ from ..utils.operator_return import OperatorReturn, OperatorReturnType
 class NavigationPuckWidget:
     """Example widget using the enhanced ImGui system for navigation controls"""
 
-    def __init__(self, center_pos: typing.Tuple[float, float] = (100.0, 100.0)):
+    def __init__(self, center_pos: tuple[float, float] = (100.0, 100.0)):
         self.widget = ImGuiWidget(origin=center_pos)
         self.setup_buttons()
 
@@ -89,7 +89,7 @@ class NavigationPuckWidget:
         """Handle input events - returns True if event was consumed"""
         return self.widget.handle_event(event)
 
-    def draw(self, mouse_pos: typing.Tuple[float, float]):
+    def draw(self, mouse_pos: tuple[float, float]):
         """Draw the widget"""
         responses = self.widget.draw(mouse_pos)
 
@@ -104,7 +104,7 @@ class NavigationPuckWidget:
 class ToolbarWidget:
     """Example toolbar widget using enhanced UI tools"""
 
-    def __init__(self, pos: typing.Tuple[float, float] = (20.0, 20.0)):
+    def __init__(self, pos: tuple[float, float] = (20.0, 20.0)):
         self.widget = ImGuiWidget(origin=pos)
         self.setup_toolbar()
 
@@ -147,7 +147,7 @@ class ToolbarWidget:
         """Handle input events"""
         return self.widget.handle_event(event)
 
-    def draw(self, mouse_pos: typing.Tuple[float, float]):
+    def draw(self, mouse_pos: tuple[float, float]):
         """Draw the toolbar"""
         return self.widget.draw(mouse_pos)
 
@@ -157,7 +157,7 @@ class ViewportWidgetManager:
 
 
     def __init__(self):
-        self.mouse_pos: typing.Tuple[float, float] = (0.0, 0.0)
+        self.mouse_pos: tuple[float, float] = (0.0, 0.0)
         self.navigation_puck = NavigationPuckWidget(self.mouse_pos)
         self.toolbar = ToolbarWidget((100.0, 100.0))
         self.widgets = [self.navigation_puck, self.toolbar]
@@ -173,7 +173,7 @@ class ViewportWidgetManager:
                 return True  # Event was consumed
         return False
 
-    def draw(self, mouse_pos: typing.Tuple[float, float]):
+    def draw(self, mouse_pos: tuple[float, float]):
         """Draw all widgets"""
         all_responses = {}
         for i, widget in enumerate(self.widgets):
@@ -183,7 +183,7 @@ class ViewportWidgetManager:
                 all_responses[f"widget_{i}_{key}"] = response
         return all_responses
 
-    def set_navigation_puck_position(self, pos: typing.Tuple[float, float]):
+    def set_navigation_puck_position(self, pos: tuple[float, float]):
         """Update navigation puck position"""
         self.navigation_puck.widget.origin = pos
         self.navigation_puck.widget.update_layout()
@@ -209,8 +209,9 @@ class NavigationPuckImguiExample(bpy.types.Operator):
     bl_description = "Navigation puck with enhanced event handling"
     bl_options = {'REGISTER'}
 
-    widget_manager = ViewportWidgetManager()
-    draw_handler = DrawHandler()
+    def __init__(self):
+        self.widget_manager = ViewportWidgetManager()
+        self.draw_handler = DrawHandler()
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Start the operator"""
