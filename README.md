@@ -1,8 +1,8 @@
 # Navigation Puck Addon
 
-Adds a custom navigation puck widget to Blender's 3D View, allowing for enhanced navigation controls.
+![image](./navigation_puck_addon_icon.png)
 
-![image](./image.png)
+Adds a custom navigation puck widget to Blender's 3D View, allowing for enhanced navigation controls.
 
 By default it is bind to "V" shortcut, but can be changed in addon preferences
 
