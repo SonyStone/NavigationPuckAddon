@@ -122,16 +122,6 @@ class UI:
 
         return response
 
-    def image_button(
-        self,
-        image: bpy.types.Image,
-        pos: tuple[float, float],
-        size: tuple[float, float],
-        widget_id: typing.Optional[str] = None
-    ) -> WidgetResponse:
-        """Create a button with an image icon"""
-        return self.icon_button(image, pos, size, widget_id)
-
     def panel(
         self,
         pos: tuple[float, float],

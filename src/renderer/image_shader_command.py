@@ -22,10 +22,10 @@ class ImageShaderCommand(DrawProtocol):
         (0, 1)
     )
     tex_coord: typing.Sequence[float] | typing.Sequence[typing.Sequence[float]] = (
-        (0, 1),  # Bottom-left
-        (1, 1),  # Bottom-right
+        (0, 0),  # Top-left
         (1, 0),  # Top-right
-        (0, 0)  # Top-left
+        (1, 1),  # Bottom-right
+        (0, 1),  # Bottom-left
     )
     indices: typing.Sequence[float] | typing.Sequence[typing.Sequence[float]] = (
         (0, 1, 2), (2, 3, 0))

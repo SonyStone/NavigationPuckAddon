@@ -17,7 +17,7 @@ def load_image(image_name: str) -> typing.Optional[bpy.types.Image]:
     """Load an image from the given path, or return existing if already loaded"""
 
     addon_dir = os.path.dirname(os.path.dirname(__file__))
-    image_path = os.path.join(addon_dir, image_name)
+    image_path = os.path.join(addon_dir, 'assets', image_name)
     try:
         image = bpy.data.images.load(
             image_path, check_existing=True)  # type: ignore
@@ -170,8 +170,10 @@ class TestImguiWidget:
 
         self.ui = UI()
 
-        # Get the path to the move.png icon
-        self.image = None
+        self.image_pan = None
+        self.image_orbit = None
+        self.image_zoom = None
+        self.image_roll = None
 
         self.view_pan = ViewPan()
         self.view_orbit = ViewOrbit()
@@ -181,7 +183,11 @@ class TestImguiWidget:
         self.is_pressed = False
         self.is_in_radius = False
         self.is_done_operation = False
-        self.auto_dismiss_distance = 100.0
+        self.auto_dismiss_distance = 200.0
+        self.follow_distance = 40.0
+        
+        self.button_sizes = 60
+        self.initial_offset = (5, 5)
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Start the modal operator and initialize widget"""
@@ -195,7 +201,10 @@ class TestImguiWidget:
         self.mouse_pos[:] = mathutils.Vector(
             (event.mouse_region_x, event.mouse_region_y))
         self.initial_mouse_pos[:] = self.mouse_pos
-        self.image = load_image("move.png")
+        self.image_pan = load_image("pan_tool_wght300.png")
+        self.image_orbit = load_image("3d_rotation_wght300.png")
+        self.image_zoom = load_image("zoom_in_wght300.png")
+        self.image_roll = load_image("flip_camera_wght300.png")
 
         force_redraw(context)
 
@@ -205,19 +214,22 @@ class TestImguiWidget:
         """Handle widget events"""
         self.mouse_pos[:] = (event.mouse_region_x, event.mouse_region_y)
 
-        if event.type == 'V' and event.value == 'RELEASE':
-            self.is_pressed = False
+        if event.type == 'V':
+            if event.value == 'RELEASE':
+                self.is_pressed = False
+            elif event.value == 'PRESS':
+                self.is_pressed = True
 
-        if math.dist(self.mouse_pos, self.initial_mouse_pos) > self.auto_dismiss_distance:  # type: ignore
-            if self.is_pressed:
-                # Move initial_mouse_pos closer to current mouse pos
-                direction = (self.mouse_pos -
-                             self.initial_mouse_pos).normalized()
+        if self.is_pressed:
+            # Move initial_mouse_pos closer to current mouse pos
+            if math.dist(self.mouse_pos, self.initial_mouse_pos) > self.follow_distance: # type: ignore
+                direction = (self.mouse_pos - self.initial_mouse_pos).normalized()
                 self.initial_mouse_pos += direction * \
                     (math.dist(self.mouse_pos, self.initial_mouse_pos) - # type: ignore
-                     self.auto_dismiss_distance)  
-            else:
-                self.is_in_radius = False
+                        self.follow_distance)
+                  
+        if math.dist(self.mouse_pos, self.initial_mouse_pos) > self.auto_dismiss_distance:  # type: ignore
+            self.is_in_radius = False
 
         if self.view_pan.event_handler(context, event) or \
            self.view_orbit.event_handler(context, event) or \
@@ -273,28 +285,41 @@ class TestImguiWidget:
         self.ui.begin_frame(self.mouse_pos)
 
         x, y = self.initial_mouse_pos
-        offset = (5, 5)
-        size = 60
+        offset = self.initial_offset
+        size = self.button_sizes
 
-        if self.image:
-            response = self.ui.image_button(
-                self.image, (x - size - 0.5 + offset[0], y - size - 0.5 + offset[1]), (size, size))
-            if response.clicked:
-                self.view_pan.apply(
-                    context, response.drag_delta, self.mouse_pos - self.initial_mouse_pos)
-                self.initial_mouse_pos[:] = self.mouse_pos - \
-                    self.view_pan.view_op.start_mouse_pos
+        if not self.image_pan or not self.image_orbit or not self.image_zoom or not self.image_roll:
+            return
 
-        response = self.ui.button(
-            "Rotate", (x + 0.5 + offset[0], y - size - 0.5 + offset[1]), (size, size))
+        response = self.ui.icon_button(
+            self.image_pan,
+            # "Pan",
+            (x - size - 0.5 + offset[0], y - size - 0.5 + offset[1]),
+            (size, size)
+        )
+        if response.clicked:
+            self.view_pan.apply(
+                context, response.drag_delta, self.mouse_pos - self.initial_mouse_pos)
+            self.initial_mouse_pos[:] = self.mouse_pos - \
+                self.view_pan.view_op.start_mouse_pos
+
+        response = self.ui.icon_button(
+            self.image_orbit,
+            # "Rotate",
+            (x + 0.5 + offset[0], y - size - 0.5 + offset[1]),
+            (size, size))
         if response.clicked:
             self.view_orbit.apply(context, response.drag_delta,
                                   self.mouse_pos - self.initial_mouse_pos, response.shift)
             self.initial_mouse_pos[:] = self.mouse_pos - \
                 self.view_orbit.view_op.start_mouse_pos
 
-        response = self.ui.button(
-            "Zoom", (x - size - 0.5 + offset[0], y + 0.5 + offset[1]), (size, size))
+        response = self.ui.icon_button(
+            self.image_zoom,
+            # "Zoom",
+            (x - size - 0.5 + offset[0], y + 0.5 + offset[1]),
+            (size, size)
+        )
         if response.clicked:
             self.view_zoom.apply(context, response.drag_delta,
                                  self.mouse_pos - self.initial_mouse_pos)
@@ -302,8 +327,12 @@ class TestImguiWidget:
                 self.view_zoom.view_op.start_mouse_pos
 
         # TODO Roll
-        response = self.ui.button(
-            "Roll", (x + 0.5 + offset[0], y + 0.5 + offset[1]), (size, size))
+        response = self.ui.icon_button(
+            self.image_roll,
+            # "Roll",
+            (x + 0.5 + offset[0], y + 0.5 + offset[1]),
+            (size, size)
+        )
         if response.clicked:
             self.view_roll.apply(context, self.mouse_pos,
                                  self.mouse_pos - self.initial_mouse_pos)
