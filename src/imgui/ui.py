@@ -2,6 +2,8 @@ import typing
 import bpy
 import mathutils
 
+from ..renderer import TextRendererCommand
+
 from ..renderer.rect_outline_command import RectOutlineCommand
 
 from . import Theme, WidgetResponse, WidgetState
@@ -55,7 +57,8 @@ class UI:
         text: typing.Optional[str],
         pos: tuple[float, float],
         size: tuple[float, float],
-        widget_id: typing.Optional[str] = None
+        widget_id: typing.Optional[str] = None,
+        opacity: float = 1.0
     ) -> WidgetResponse:
         """Create a button widget"""
 
@@ -73,8 +76,11 @@ class UI:
             case _:
                 color = self.theme.button_idle
 
+        border_color = (self.theme.border[0], self.theme.border[1], self.theme.border[2], self.theme.border[3] * opacity)
+        fill_color = (color[0], color[1], color[2], color[3] * opacity)
+
         # Draw rect
-        self.renderer.add_rect_outline(rect, self.theme.border, color, self.theme.border_width)
+        self.renderer.add(RectOutlineCommand(rect, outline_color=border_color, fill_color=fill_color, outline_width=self.theme.border_width))
 
         # Draw text
         if text:
@@ -83,7 +89,10 @@ class UI:
                 rect.x + (rect.width - text_size[0]) * 0.5,
                 rect.y + (rect.height - text_size[1]) * 0.5
             )
-            self.renderer.add_text(text, text_pos, self.theme.text)
+            
+            text_color = (self.theme.text[0], self.theme.text[1], self.theme.text[2], self.theme.text[3] * opacity)
+
+            self.renderer.add(TextRendererCommand(text, text_pos, color=text_color))
 
         response = self.ctx.get_widget_response(widget_id, rect)
         return response

@@ -26,5 +26,4 @@ class RendererBatch:
         for draw_call in self.draw_calls:
             draw_call.draw()
 
-        self.merge = None
         self.draw_calls.clear()

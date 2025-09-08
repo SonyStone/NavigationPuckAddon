@@ -1,4 +1,5 @@
 import math
+import re
 import typing
 import os
 import bpy
@@ -158,8 +159,6 @@ class ViewRoll:
             return True
 
         return False
-
-
 class TestImguiWidget:
     """The smallest possible test widget drawing a simple square"""
 
@@ -184,16 +183,19 @@ class TestImguiWidget:
         self.is_in_radius = False
         self.is_done_operation = False
         self.auto_dismiss_distance = 200.0
-        self.follow_distance = 40.0
-        
+        self.follow_distance = 70.0
+
         self.button_sizes = 60
         self.initial_offset = (5, 5)
+        
+        self.show_menu = True
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Start the modal operator and initialize widget"""
         self.is_pressed = True
         self.is_in_radius = True
         self.is_done_operation = False
+        self.show_menu = True
 
         self.draw_handler.add(context, self.draw_callback)
 
@@ -214,20 +216,19 @@ class TestImguiWidget:
         """Handle widget events"""
         self.mouse_pos[:] = (event.mouse_region_x, event.mouse_region_y)
 
-        if event.type == 'V':
+        if event.type == 'ESC':
+            self.draw_handler.remove()
+            force_redraw(context)
+            return OperatorReturn.FINISHED
+
+        if event.type == 'V' or event.type == 'MIDDLEMOUSE':
             if event.value == 'RELEASE':
                 self.is_pressed = False
+                self.show_menu = True
             elif event.value == 'PRESS':
                 self.is_pressed = True
+                self.show_menu = False
 
-        if self.is_pressed:
-            # Move initial_mouse_pos closer to current mouse pos
-            if math.dist(self.mouse_pos, self.initial_mouse_pos) > self.follow_distance: # type: ignore
-                direction = (self.mouse_pos - self.initial_mouse_pos).normalized()
-                self.initial_mouse_pos += direction * \
-                    (math.dist(self.mouse_pos, self.initial_mouse_pos) - # type: ignore
-                        self.follow_distance)
-                  
         if math.dist(self.mouse_pos, self.initial_mouse_pos) > self.auto_dismiss_distance:  # type: ignore
             self.is_in_radius = False
 
@@ -251,15 +252,26 @@ class TestImguiWidget:
             force_redraw(context)
             return OperatorReturn.RUNNING_MODAL
 
+        if self.is_pressed:
+            # Move initial_mouse_pos closer to current mouse pos
+            if math.dist(self.mouse_pos, self.initial_mouse_pos) > self.follow_distance:  # type: ignore
+                direction = (self.mouse_pos -
+                             self.initial_mouse_pos).normalized()
+                self.initial_mouse_pos += direction * \
+                    (math.dist(self.mouse_pos, self.initial_mouse_pos) -  # type: ignore
+                        self.follow_distance)
+
         if not self.is_pressed and not self.is_in_radius:
-            self.draw_handler.remove()
+            # self.draw_handler.remove()
             force_redraw(context)
-            return OperatorReturn.CANCELLED
+            return OperatorReturn.RUNNING_MODAL
 
         if self.is_done_operation and not self.is_pressed:
-            self.draw_handler.remove()
+            # self.draw_handler.remove()
             force_redraw(context)
-            return OperatorReturn.FINISHED
+            return OperatorReturn.RUNNING_MODAL
+        
+
 
         if self.ui.ctx.handle_event(event):
             # Event was consumed by the widget, redraw
@@ -275,6 +287,30 @@ class TestImguiWidget:
 
         registered with a DrawHandler(), called after each `force_redraw` call
         """
+        
+        # Lets try to implement a simple menu that appears when the widget is activated
+        if self.show_menu:
+            self.ui.begin_frame(self.mouse_pos)
+            distance = math.dist(self.mouse_pos, self.initial_mouse_pos) # type: ignore
+            if distance > self.follow_distance:  # type: ignore
+                direction = (self.mouse_pos - self.initial_mouse_pos).normalized()
+                self.initial_mouse_pos += direction * (distance -  self.follow_distance)
+                
+            opacity = max(0.0, 1.0 - (distance / self.follow_distance))
+
+            response = self.ui.button(
+                "Navigation Puck Menu",
+                (self.initial_mouse_pos[0], self.initial_mouse_pos[1] + 10),
+                (150, 30),
+                "nav_puck_menu_button",
+                opacity=opacity
+            )
+            if response.clicked:
+                self.show_menu = False
+                self.is_pressed = True
+            self.ui.end_frame()
+            return
+        
         if self.view_pan.view_op.is_active or \
            self.view_orbit.view_op.is_active or \
            self.view_zoom.view_op.is_active or \
@@ -297,7 +333,7 @@ class TestImguiWidget:
             (x - size - 0.5 + offset[0], y - size - 0.5 + offset[1]),
             (size, size)
         )
-        if response.clicked:
+        if response.clicked or response.dragged:
             self.view_pan.apply(
                 context, response.drag_delta, self.mouse_pos - self.initial_mouse_pos)
             self.initial_mouse_pos[:] = self.mouse_pos - \
@@ -308,7 +344,7 @@ class TestImguiWidget:
             # "Rotate",
             (x + 0.5 + offset[0], y - size - 0.5 + offset[1]),
             (size, size))
-        if response.clicked:
+        if response.clicked or response.dragged:
             self.view_orbit.apply(context, response.drag_delta,
                                   self.mouse_pos - self.initial_mouse_pos, response.shift)
             self.initial_mouse_pos[:] = self.mouse_pos - \
@@ -320,20 +356,19 @@ class TestImguiWidget:
             (x - size - 0.5 + offset[0], y + 0.5 + offset[1]),
             (size, size)
         )
-        if response.clicked:
+        if response.clicked or response.dragged:
             self.view_zoom.apply(context, response.drag_delta,
                                  self.mouse_pos - self.initial_mouse_pos)
             self.initial_mouse_pos[:] = self.mouse_pos - \
                 self.view_zoom.view_op.start_mouse_pos
 
-        # TODO Roll
         response = self.ui.icon_button(
             self.image_roll,
             # "Roll",
             (x + 0.5 + offset[0], y + 0.5 + offset[1]),
             (size, size)
         )
-        if response.clicked:
+        if response.clicked or response.dragged:
             self.view_roll.apply(context, self.mouse_pos,
                                  self.mouse_pos - self.initial_mouse_pos)
             self.initial_mouse_pos[:] = self.mouse_pos - \

@@ -7,7 +7,6 @@ import bpy
 from .draw_protocol import DrawProtocol
 from .image_render_command import ImageRenderCommand
 from .text_renderer_command import TextRendererCommand
-from .draw_rectangle_command import DrawRectangleCommand
 
 from .renderer_batch import RendererBatch
 from .rect_outline_command import RectOutlineCommand
@@ -30,13 +29,6 @@ class Renderer:
         """Add a draw call to the batch"""
         self.batch.add(draw_call)
 
-    def add_rect(
-        self,
-        rect: tuple[float, float, float, float],
-        color: tuple[float, float, float, float]
-    ):
-        """Draw a filled rectangle"""
-        self.batch.add(DrawRectangleCommand(rect, color))
 
     def add_rect_outline(
         self,
