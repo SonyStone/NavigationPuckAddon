@@ -27,7 +27,7 @@ def get_pan_vectors_and_factor(context: bpy.types.Context):
 
     right = view_matrix_inv.col[0].xyz
     up = view_matrix_inv.col[1].xyz
-    region_width = context.region.width
+    region_width = context.region.width if context.region is not None else 0
     pan_factor = rv3d.view_distance / region_width
 
     return right, up, pan_factor

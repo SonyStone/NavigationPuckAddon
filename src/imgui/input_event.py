@@ -28,11 +28,15 @@ class PointerButton(enum.Enum):
 class PointerEvent:
     """Represents an input event"""
     event_type: EventType
-    position: mathutils.Vector = mathutils.Vector((0.0, 0.0))
+    position: mathutils.Vector = dataclasses.field(
+        default_factory=lambda: mathutils.Vector((0.0, 0.0))
+    )
     button: typing.Optional[PointerButton] = None
     key: typing.Optional[str] = None
     shift: bool = False
     ctrl: bool = False
     alt: bool = False
-    delta: mathutils.Vector = mathutils.Vector((0.0, 0.0))
+    delta: mathutils.Vector = dataclasses.field(
+        default_factory=lambda: mathutils.Vector((0.0, 0.0))
+    )
     timestamp: float = 0.0

@@ -54,7 +54,8 @@ class Renderer:
         self,
         image: bpy.types.Image,
         pos: tuple[float, float],
-        size: typing.Optional[tuple[float, float]] = None
+        size: typing.Optional[tuple[float, float]] = None,
+        opacity: float = 1.0
     ):
         """Draw an image at the specified position"""
-        self.batch.add(ImageRenderCommand(image, pos, size))
+        self.batch.add(ImageRenderCommand(image, pos, size, opacity))

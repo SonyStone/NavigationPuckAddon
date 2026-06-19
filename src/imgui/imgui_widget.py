@@ -1,6 +1,6 @@
 """
 Enhanced UI Tools with ImGui-style event handling
-This provides a drop-in replacement for the existing ui_tools with better event handling.
+This provides reusable widget helpers on top of the immediate-mode UI system.
 """
 
 import enum
@@ -167,14 +167,13 @@ class EnhancedWidgetDrawer:
 
     def begin_frame(self, mouse_pos: tuple[float, float]):
         """Begin drawing frame - call before drawing widgets"""
-
         self.mouse_pos = mouse_pos
-        self.ui.ctx.begin_frame(mouse_pos)
+        self.ui.begin_frame(mouse_pos)
         self.responses.clear()
 
     def end_frame(self):
         """End drawing frame - call after drawing all widgets"""
-        self.ui.ctx.end_frame()
+        self.ui.end_frame()
 
     def draw_button(self, button: Button, widget_id: typing.Optional[str] = None) -> WidgetResponse:
         """Draw a single button using ImGui system"""

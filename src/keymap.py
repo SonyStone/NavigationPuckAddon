@@ -5,33 +5,13 @@ This module handles the registration and unregistration of keymaps for the addon
 
 import bpy
 
-from .panels import CURRENT_MAIN_WIDGET
-
 addon_keymaps: list[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]] = []
 
 
 def register_keymaps():
     """Register keymaps for the addon."""
-
-    wm = bpy.context.window_manager
-    if wm is None:
-        return
-    kc = wm.keyconfigs.addon
-
-    if kc:
-
-        # Create a new keymap for 3D View
-        km = kc.keymaps.new(name="3D View", space_type="VIEW_3D")
-
-        # Add a new keymap item with the customizable keybinding
-        kmi = km.keymap_items.new(
-            CURRENT_MAIN_WIDGET.bl_idname,
-            type="V",
-            value="PRESS",
-        )
-
-        # Store the keymap to remove it later
-        addon_keymaps.append((km, kmi))
+    # The viewport shortcut is always available, so the old "press V to summon"
+    # keymap is intentionally not registered.
 
 
 def unregister_keymaps():

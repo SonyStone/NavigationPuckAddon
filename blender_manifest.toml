@@ -64,7 +64,8 @@ license = [
 [build]
 paths_exclude_pattern = [
   "__pycache__/",
-  "*.png",
+  "/navigation_puck_addon_icon.png",
+  "/puck-pan-zoom.png",
   "/.git/",
   "/*.zip",
 ]

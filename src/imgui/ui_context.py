@@ -3,6 +3,7 @@ import bpy
 import mathutils
 
 from . import InputEventAdapter, Theme, WidgetResponse, WidgetState
+from .double_click_tracker import DoubleClickTracker
 from .rect import Rect
 
 from .input_event import EventType, PointerEvent, PointerButton
@@ -30,6 +31,7 @@ class UIContext:
         # Click tracking
         self.click_start_pos = (0.0, 0.0)
         self.click_time = 0.0
+        self.double_click_tracker = DoubleClickTracker()
 
         # Layout state
         self.next_widget_pos = (0.0, 0.0)
@@ -42,8 +44,11 @@ class UIContext:
         # Event queue
         self.pending_events: typing.List[PointerEvent] = []
 
-    def begin_frame(self, mouse_pos: mathutils.Vector):
+    def begin_frame(self, mouse_pos: mathutils.Vector | tuple[float, float]):
         """Begin new frame - call this before drawing widgets"""
+        if not isinstance(mouse_pos, mathutils.Vector):
+            mouse_pos = mathutils.Vector(mouse_pos)
+
         self.last_mouse_pos = self.mouse_pos
         self.mouse_pos = mouse_pos
         self.mouse_delta = mathutils.Vector((
@@ -57,6 +62,12 @@ class UIContext:
 
     def end_frame(self):
         """End frame - call this after drawing all widgets"""
+        if any(
+            event.event_type == EventType.POINTER_UP and event.button == PointerButton.MAIN_BUTTON
+            for event in self.pending_events
+        ):
+            self.active_id = None
+
         # Clear processed events
         self.pending_events.clear()
 
@@ -88,14 +99,9 @@ class UIContext:
                 self.click_start_pos = event.position
                 self.click_time = event.timestamp
 
-                if self.hovered_id:
-                    self.active_id = self.hovered_id
-                    consumed = True
-
         elif event.event_type == EventType.POINTER_UP:
             if event.button == PointerButton.MAIN_BUTTON:
-                self.active_id = None
-                consumed = self.hovered_id is not None
+                consumed = self.active_id is not None or self.hovered_id is not None
 
         return consumed
 
@@ -127,23 +133,25 @@ class UIContext:
         shift = False
         ctrl = False
 
-        # Check for click
         for event in self.pending_events:
-            if (is_event_click(event, self.active_id, widget_id, rect)):
+            if is_event_pointer_down(event, rect):
+                self.active_id = widget_id
                 clicked = True
+                double_clicked = self.double_click_tracker.is_double_click(
+                    widget_id, event
+                )
 
-            if (event.shift):
+            if event.shift:
                 shift = True
 
-            if (event.ctrl):
+            if event.ctrl:
                 ctrl = True
 
-            # Check for drag
-            if (is_event_drag(event, self.active_id, widget_id)):
+            if is_event_drag(event, self.active_id, widget_id):
                 dragged = True
                 drag_delta = event.delta
 
-            if (is_event_release(event, self.active_id, widget_id)):
+            if is_event_release(event, self.active_id, widget_id):
                 released = True
 
         response = WidgetResponse(
@@ -159,11 +167,10 @@ class UIContext:
 
         return response
 
-def is_event_click(event: PointerEvent, active_id: str | None, widget_id: str | None, rect: Rect) -> bool:
-    """Check if event represents a click on the widget"""
+def is_event_pointer_down(event: PointerEvent, rect: Rect) -> bool:
+    """Check if event starts on this widget."""
     return event.event_type == EventType.POINTER_DOWN and \
         event.button == PointerButton.MAIN_BUTTON and \
-        active_id == widget_id and \
         rect.contains(*event.position)
 
 def is_event_drag(event: PointerEvent, active_id: str | None, widget_id: str | None) -> bool:

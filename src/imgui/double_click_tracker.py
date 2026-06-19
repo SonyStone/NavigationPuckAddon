@@ -10,7 +10,7 @@ class DoubleClickTracker:
     ```
     self.double_click = DoubleClickTracker()
 
-    if event.event_type == EventType.MOUSE_PRESS:
+    if event.event_type == EventType.POINTER_DOWN:
     
         if self.double_click.is_double_click(self.hovered_id, event):
             print("Double click detected!")

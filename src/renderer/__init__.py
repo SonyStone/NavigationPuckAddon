@@ -9,4 +9,5 @@ from .flat_color_shader_command import *
 from .image_render_command import *
 from .image_shader_command import *
 from .rect_outline_command import *
+from .circle_outline_command import *
 from .text_renderer_command import *

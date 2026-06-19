@@ -9,6 +9,49 @@ import bpy
 
 from .draw_protocol import DrawProtocol
 
+_IMAGE_OPACITY_SHADER: gpu.types.GPUShader | None = None
+_IMAGE_OPACITY_SHADER_FAILED = False
+
+
+def get_image_opacity_shader() -> gpu.types.GPUShader | None:
+    """Create the image shader used when an icon needs alpha fading."""
+    global _IMAGE_OPACITY_SHADER, _IMAGE_OPACITY_SHADER_FAILED
+    if _IMAGE_OPACITY_SHADER_FAILED:
+        return None
+
+    if _IMAGE_OPACITY_SHADER is None:
+        vertex_shader = """
+            uniform mat4 ModelViewProjectionMatrix;
+            in vec2 pos;
+            in vec2 texCoord;
+            out vec2 texCoord_interp;
+
+            void main()
+            {
+                texCoord_interp = texCoord;
+                gl_Position = ModelViewProjectionMatrix * vec4(pos.xy, 0.0, 1.0);
+            }
+        """
+        fragment_shader = """
+            uniform sampler2D image;
+            uniform float opacity;
+            in vec2 texCoord_interp;
+            out vec4 fragColor;
+
+            void main()
+            {
+                vec4 color = texture(image, texCoord_interp);
+                fragColor = vec4(color.rgb, color.a * opacity);
+            }
+        """
+        try:
+            _IMAGE_OPACITY_SHADER = gpu.types.GPUShader(vertex_shader, fragment_shader)
+        except Exception as ex:
+            _IMAGE_OPACITY_SHADER_FAILED = True
+            print(f"Image opacity shader disabled: {ex}")
+            return None
+    return _IMAGE_OPACITY_SHADER
+
 
 @dataclasses.dataclass
 class ImageShaderCommand(DrawProtocol):
@@ -29,16 +72,21 @@ class ImageShaderCommand(DrawProtocol):
     )
     indices: typing.Sequence[float] | typing.Sequence[typing.Sequence[float]] = (
         (0, 1, 2), (2, 3, 0))
+    opacity: float = 1.0
 
     def draw(self):
         """Draw the image using the IMAGE shader"""
+        if self.opacity <= 0.0:
+            return
+
         self.image.gl_load()
 
         # Set up GPU state for image rendering
         gpu.state.blend_set('ALPHA')
         gpu.state.depth_test_set('NONE')
 
-        shader = gpu.shader.from_builtin('IMAGE')
+        opacity_shader = None if self.opacity >= 1.0 else get_image_opacity_shader()
+        shader = opacity_shader or gpu.shader.from_builtin('IMAGE')
 
         batch = gpu_extras.batch.batch_for_shader(  # type: ignore
             shader, 'TRIS',
@@ -52,4 +100,6 @@ class ImageShaderCommand(DrawProtocol):
         texture = gpu.texture.from_image(self.image)
         shader.bind()
         shader.uniform_sampler("image", texture)
+        if opacity_shader:
+            shader.uniform_float("opacity", self.opacity)
         batch.draw(shader)

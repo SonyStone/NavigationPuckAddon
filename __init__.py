@@ -13,14 +13,14 @@
 
 import bpy
 
-from . src import operators, panels, preferences
+from . src import panels, preferences
 from . src.keymap import register_keymaps, unregister_keymaps
 
 bl_info = { # type: ignore
     "name": "Navigation Puck Addon",
     "author": "Ilya",
-    "version": (1, 0, 0),
-    "blender": (3, 0, 0),
+    "version": (1, 0, 1),
+    "blender": (4, 2, 0),
     "location": "View3D > Navigation Puck",
     "description": "Custom navigation puck widget",
     "warning": "",
@@ -29,11 +29,8 @@ bl_info = { # type: ignore
     "category": "3D View",
 }
 
-# Update register and unregister functions to include preferences
-
 classes = (
     *preferences.classes,
-    *operators.classes,
     *panels.classes,
 )
 
@@ -43,10 +40,12 @@ def register():
         bpy.utils.register_class(cls)
 
     register_keymaps()
+    panels.register()
 
 
 def unregister():
     """Unregister all components of the addon."""
+    panels.unregister()
     unregister_keymaps()
 
     for cls in reversed(classes):

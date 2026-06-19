@@ -16,6 +16,7 @@ class ImageRenderCommand(DrawProtocol, UnwrapProtocol):
     image: bpy.types.Image
     pos: tuple[float, float]
     size: typing.Optional[tuple[float, float]]
+    opacity: float = 1.0
     
     def unwrap(self) -> ImageShaderCommand:
         image, pos = self.image, self.pos
@@ -25,6 +26,7 @@ class ImageRenderCommand(DrawProtocol, UnwrapProtocol):
         return ImageShaderCommand(
             image=image,
             pos=RectangleVertices((pos[0], pos[1], size[0], size[1])),
+            opacity=self.opacity,
         )
 
     def draw(self):

@@ -28,7 +28,9 @@ class WidgetResponse:
     clicked: bool = False
     hovered: bool = False
     dragged: bool = False
-    drag_delta: mathutils.Vector = mathutils.Vector((0.0, 0.0))
+    drag_delta: mathutils.Vector = dataclasses.field(
+        default_factory=lambda: mathutils.Vector((0.0, 0.0))
+    )
     released: bool = False
     double_clicked: bool = False
     shift: bool = False
@@ -74,13 +76,10 @@ class InputEventAdapter:
         self.last_mouse_pos = mathutils.Vector((0.0, 0.0))
         self.mouse_delta = mathutils.Vector((0.0, 0.0))
 
-        # we only track main button for now
-        self.pointer_down: typing.Literal[PointerButton.MAIN_BUTTON] | None = None
+        self.pointer_down: typing.Optional[PointerButton] = None
 
     def to_pointer_event(self, event: bpy.types.Event) -> PointerEvent | None:
         """Handle Blender event and convert to imgui event format"""
-        pointer_event = None
-
         event_type = EventType.NONE
         button = None
         delta = mathutils.Vector(
@@ -88,7 +87,7 @@ class InputEventAdapter:
 
         match event.type:
             case 'MOUSEMOVE':
-                if self.pointer_down is not None and self.pointer_down == PointerButton.MAIN_BUTTON:
+                if self.pointer_down is not None:
                     event_type = EventType.POINTER_MOVE
                     button = self.pointer_down
                 else:
@@ -97,22 +96,23 @@ class InputEventAdapter:
             case 'LEFTMOUSE' | 'RIGHTMOUSE' | 'MIDDLEMOUSE':
                 match event.value:
                     case 'PRESS':
-                        if event.type == 'LEFTMOUSE':
-                            self.pointer_down = PointerButton.MAIN_BUTTON
                         event_type = EventType.POINTER_DOWN
+                        self.pointer_down = PointerButton(event.type)
                     case 'RELEASE':
-                        self.pointer_down = None
                         event_type = EventType.POINTER_UP
                     case _:
                         pass
 
                 button = PointerButton(event.type)
             case _:
-                pass
+                return None
+
+        if event_type == EventType.NONE:
+            return None
 
         pointer_event = PointerEvent(
             event_type=event_type,
-            position=(event.mouse_region_x, event.mouse_region_y),
+            position=mathutils.Vector((event.mouse_region_x, event.mouse_region_y)),
             button=button,
             shift=event.shift,
             ctrl=event.ctrl,
@@ -120,5 +120,8 @@ class InputEventAdapter:
             delta=delta,
             timestamp=time.time(),
         )
+
+        if event_type == EventType.POINTER_UP and button == self.pointer_down:
+            self.pointer_down = None
 
         return pointer_event
