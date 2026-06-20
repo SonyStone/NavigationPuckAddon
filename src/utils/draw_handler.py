@@ -1,5 +1,6 @@
 import typing
 import bpy
+import gpu
 
 class DrawHandler:
     """
@@ -22,6 +23,8 @@ class DrawHandler:
         self.handler: typing.Optional[typing.Any] = None
         self.space_type: typing.Optional[type] = None
         self.context_key: typing.Optional[tuple[int, int, int, int]] = None
+        self.viewport_rects: tuple[tuple[int, int, int, int], ...] = ()
+        self.region_data_pointer: int | None = None
         self.callback: typing.Optional[typing.Callable[..., None]] = None
 
     def _context_key(self, context: bpy.types.Context) -> tuple[int, int, int, int]:
@@ -32,9 +35,101 @@ class DrawHandler:
             context.region.as_pointer() if context.region else 0,
         )
 
+    def _context_viewport_rects(self, context: bpy.types.Context) -> tuple[tuple[int, int, int, int], ...]:
+        if context.region is None:
+            return ()
+        local_rect = (
+            0,
+            0,
+            int(context.region.width),
+            int(context.region.height),
+        )
+        screen_rect = (
+            int(context.region.x),
+            int(context.region.y),
+            int(context.region.width),
+            int(context.region.height),
+        )
+        if screen_rect == local_rect:
+            return (local_rect,)
+        return (local_rect, screen_rect)
+
+    def _current_state_rect(self, getter_name: str) -> tuple[int, int, int, int] | None:
+        try:
+            rect = getattr(gpu.state, getter_name)()
+        except (AttributeError, ReferenceError, RuntimeError):
+            return None
+        return tuple(int(round(float(value))) for value in rect)
+
+    def _current_viewport_rects(self) -> tuple[tuple[int, int, int, int], ...]:
+        rects: list[tuple[int, int, int, int]] = []
+        for getter_name in ("scissor_get", "viewport_get"):
+            rect = self._current_state_rect(getter_name)
+            if rect is not None and rect not in rects:
+                rects.append(rect)
+        return tuple(rects)
+
+    def _rect_matches(
+        self,
+        current_rect: tuple[int, int, int, int],
+        owner_rect: tuple[int, int, int, int],
+    ) -> bool:
+        return all(abs(current - owner) <= 2 for current, owner in zip(current_rect, owner_rect))
+
+    def _current_region_data_pointer(self) -> int | None:
+        region_data = getattr(bpy.context, "region_data", None)
+        if region_data is None:
+            return None
+        try:
+            return int(region_data.as_pointer())
+        except (AttributeError, ReferenceError, RuntimeError):
+            return None
+
+    def _region_data_matches(self) -> bool | None:
+        if self.region_data_pointer is None:
+            return None
+
+        current_region_data_pointer = self._current_region_data_pointer()
+        if current_region_data_pointer is None:
+            return None
+
+        return current_region_data_pointer == self.region_data_pointer
+
+    def _viewport_matches(self) -> bool:
+        region_data_match = self._region_data_matches()
+        if region_data_match is not None:
+            return region_data_match
+
+        if not self.viewport_rects:
+            return True
+
+        current_rects = self._current_viewport_rects()
+        if not current_rects:
+            return True
+
+        return any(
+            self._rect_matches(current_rect, owner_rect)
+            for current_rect in current_rects
+            for owner_rect in self.viewport_rects
+        )
+
+    def update_context(
+        self,
+        context: bpy.types.Context,
+        viewport_rects: tuple[tuple[int, int, int, int], ...] | None = None,
+        region_data: bpy.types.RegionView3D | None = None,
+    ) -> None:
+        self.context_key = self._context_key(context)
+        self.viewport_rects = viewport_rects if viewport_rects is not None else self._context_viewport_rects(context)
+        try:
+            self.region_data_pointer = int(region_data.as_pointer()) if region_data is not None else None
+        except (AttributeError, ReferenceError, RuntimeError):
+            self.region_data_pointer = None
+
     def _draw_callback(self, *args: typing.Any) -> None:
-        if self.callback:
-            self.callback(*args)
+        if not self.callback or not self._viewport_matches():
+            return
+        self.callback(*args)
 
     def add(self, context: bpy.types.Context, callback: typing.Callable[[typing.Any, bpy.types.Context], None]) -> None:
         """
@@ -54,9 +149,12 @@ class DrawHandler:
 
         if self.handler is None:
             self.space_type = space_type
-            self.context_key = self._context_key(context)
+            self.update_context(context)
             self.callback = callback
             self.handler = space_type.draw_handler_add(self._draw_callback, args, 'WINDOW', 'POST_PIXEL')
+        else:
+            self.update_context(context)
+            self.callback = callback
 
     def remove(self) -> None:
         """
@@ -73,6 +171,8 @@ class DrawHandler:
             self.handler = None
             self.space_type = None
             self.context_key = None
+            self.viewport_rects = ()
+            self.region_data_pointer = None
             self.callback = None
             
 def force_redraw(context: bpy.types.Context) -> None:

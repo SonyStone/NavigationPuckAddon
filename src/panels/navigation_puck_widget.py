@@ -85,19 +85,266 @@ def context_key(context: bpy.types.Context) -> tuple[int, int, int, int]:
     )
 
 
-def make_context_override(context: bpy.types.Context) -> dict[str, typing.Any] | None:
+def context_area_key(context: bpy.types.Context) -> tuple[int, int, int]:
+    return context_key(context)[:3]
+
+
+ViewportRect = tuple[int, int, int, int]
+QuadWindowRegionEntry = tuple[ViewportRect, bpy.types.Region]
+
+
+def _rect_variants(context: bpy.types.Context, rect: ViewportRect) -> tuple[ViewportRect, ...]:
+    rects = [rect]
+    if context.region:
+        screen_rect = (
+            int(context.region.x) + rect[0],
+            int(context.region.y) + rect[1],
+            rect[2],
+            rect[3],
+        )
+        if screen_rect != rect:
+            rects.append(screen_rect)
+    return tuple(rects)
+
+
+def _full_region_rect(context: bpy.types.Context) -> ViewportRect:
+    if not context.region:
+        return (0, 0, 1, 1)
+    return (0, 0, int(context.region.width), int(context.region.height))
+
+
+def _quad_window_region_entries(context: bpy.types.Context) -> tuple[QuadWindowRegionEntry, ...]:
+    if context.area is None:
+        return ()
+
+    area_x = int(getattr(context.area, "x", 0))
+    area_y = int(getattr(context.area, "y", 0))
+    area_width = int(getattr(context.area, "width", 0))
+    area_height = int(getattr(context.area, "height", 0))
+    entries: list[QuadWindowRegionEntry] = []
+    for region in context.area.regions:
+        if region.type != 'WINDOW' or region.width <= 1 or region.height <= 1:
+            continue
+        rect = (
+            int(region.x) - area_x,
+            int(region.y) - area_y,
+            int(region.width),
+            int(region.height),
+        )
+        if area_width > 1 and area_height > 1 and rect[2] >= area_width and rect[3] >= area_height:
+            continue
+        if not any(existing_rect == rect for existing_rect, _region in entries):
+            entries.append((rect, region))
+    if len(entries) < 4:
+        return ()
+    return tuple(entries)
+
+
+def _quad_window_region_rects(context: bpy.types.Context) -> tuple[ViewportRect, ...]:
+    return tuple(rect for rect, _region in _quad_window_region_entries(context))
+
+
+def _quad_rect_by_corner(
+    rects: tuple[ViewportRect, ...],
+    area_width: int,
+    area_height: int,
+    *,
+    left: bool,
+    top: bool,
+) -> ViewportRect | None:
+    mid_x = float(area_width) * 0.5
+    mid_y = float(area_height) * 0.5
+    candidates: list[ViewportRect] = []
+    for rect in rects:
+        x, y, width, height = rect
+        center_x = x + (width * 0.5)
+        center_y = y + (height * 0.5)
+        if left != (center_x < mid_x):
+            continue
+        if top != (center_y >= mid_y):
+            continue
+        candidates.append(rect)
+
+    if not candidates:
+        return None
+    return max(candidates, key=lambda rect: rect[2] * rect[3])
+
+
+def _quad_window_region_for_rect(
+    context: bpy.types.Context,
+    rect: ViewportRect,
+) -> bpy.types.Region | None:
+    for candidate_rect, region in _quad_window_region_entries(context):
+        if candidate_rect == rect:
+            return region
+    return None
+
+
+def _fallback_quad_view_rects(context: bpy.types.Context) -> tuple[ViewportRect, ViewportRect, ViewportRect, ViewportRect]:
+    width = int(getattr(context.area, "width", 0)) if context.area else 0
+    height = int(getattr(context.area, "height", 0)) if context.area else 0
+    if width <= 1 or height <= 1:
+        width = int(context.region.width) * 2 if context.region else 2
+        height = int(context.region.height) * 2 if context.region else 2
+
+    mid_x = max(width // 2, 1)
+    mid_y = max(height // 2, 1)
+    right_width = max(width - mid_x, 1)
+    top_height = max(height - mid_y, 1)
+    return (
+        (0, mid_y, mid_x, top_height),
+        (mid_x, mid_y, right_width, top_height),
+        (0, 0, mid_x, mid_y),
+        (mid_x, 0, right_width, mid_y),
+    )
+
+
+def _quad_view_entries(context: bpy.types.Context) -> tuple[tuple[ViewportRect, bpy.types.RegionView3D], ...]:
+    if context.area is None or context.area.type != 'VIEW_3D' or context.region is None or context.space_data is None:
+        return ()
+
+    quadviews = tuple(getattr(context.space_data, "region_quadviews", ()))
+    if len(quadviews) < 4:
+        return ()
+
+    window_rects = _quad_window_region_rects(context)
+    area_width = int(getattr(context.area, "width", 0))
+    area_height = int(getattr(context.area, "height", 0))
+    fallback_top_left, fallback_top_right, fallback_bottom_left, fallback_bottom_right = _fallback_quad_view_rects(context)
+
+    top_left = _quad_rect_by_corner(window_rects, area_width, area_height, left=True, top=True) or fallback_top_left
+    top_right = _quad_rect_by_corner(window_rects, area_width, area_height, left=False, top=True) or fallback_top_right
+    bottom_left = _quad_rect_by_corner(window_rects, area_width, area_height, left=True, top=False) or fallback_bottom_left
+    bottom_right = _quad_rect_by_corner(window_rects, area_width, area_height, left=False, top=False) or fallback_bottom_right
+    region_3d = getattr(context.space_data, "region_3d", None) or quadviews[3]
+
+    return (
+        (top_left, quadviews[1]),
+        (top_right, region_3d),
+        (bottom_left, quadviews[0]),
+        (bottom_right, quadviews[2]),
+    )
+
+
+def _quad_view_entry_at(
+    context: bpy.types.Context,
+    position: mathutils.Vector | None,
+) -> tuple[ViewportRect, bpy.types.RegionView3D] | None:
+    if position is None:
+        return None
+
+    for rect, region_data in _quad_view_entries(context):
+        x, y, width, height = rect
+        if x <= position.x < x + width and y <= position.y < y + height:
+            return rect, region_data
+    return None
+
+
+def viewport_local_rect_for_position(
+    context: bpy.types.Context,
+    position: mathutils.Vector | None = None,
+) -> ViewportRect:
+    quad_entry = _quad_view_entry_at(context, position)
+    return quad_entry[0] if quad_entry else _full_region_rect(context)
+
+
+def window_region_for_position(
+    context: bpy.types.Context,
+    position: mathutils.Vector | None = None,
+) -> bpy.types.Region | None:
+    quad_entry = _quad_view_entry_at(context, position)
+    if quad_entry:
+        return _quad_window_region_for_rect(context, quad_entry[0]) or context.region
+    return context.region
+
+
+def region_view3d_for_position(
+    context: bpy.types.Context,
+    position: mathutils.Vector | None = None,
+) -> bpy.types.RegionView3D | None:
+    if context.area is None or context.area.type != 'VIEW_3D' or context.space_data is None:
+        return None
+
+    quad_entry = _quad_view_entry_at(context, position)
+    if quad_entry:
+        return quad_entry[1]
+
+    region_data = getattr(context, "region_data", None)
+    if region_data is not None and hasattr(region_data, "view_matrix"):
+        return region_data
+
+    return getattr(context.space_data, "region_3d", None)
+
+
+def viewport_rects_for_position(
+    context: bpy.types.Context,
+    position: mathutils.Vector | None = None,
+) -> tuple[ViewportRect, ...]:
+    return _rect_variants(context, viewport_local_rect_for_position(context, position))
+
+
+def event_region_position(event: bpy.types.Event, fallback: mathutils.Vector) -> mathutils.Vector:
+    x = getattr(event, "mouse_region_x", fallback.x)
+    y = getattr(event, "mouse_region_y", fallback.y)
+    return mathutils.Vector((x, y))
+
+
+def event_area_position(
+    context: bpy.types.Context,
+    event: bpy.types.Event,
+    fallback: mathutils.Vector,
+) -> mathutils.Vector:
+    position = event_region_position(event, fallback)
+    if not _quad_view_entries(context) or context.area is None or context.region is None:
+        return position
+
+    region_x = int(context.region.x) - int(context.area.x)
+    region_y = int(context.region.y) - int(context.area.y)
+    if region_x == 0 and region_y == 0:
+        return position
+
+    if position.x <= float(context.region.width) + 2.0 and position.y <= float(context.region.height) + 2.0:
+        return mathutils.Vector((position.x + region_x, position.y + region_y))
+
+    return position
+
+
+def local_viewport_position(context: bpy.types.Context, position: mathutils.Vector) -> mathutils.Vector:
+    x, y, _width, _height = viewport_local_rect_for_position(context, position)
+    return mathutils.Vector((position.x - x, position.y - y))
+
+
+class RegionLocalEvent:
+    """Event proxy with mouse_region coordinates localized to the selected viewport."""
+
+    def __init__(self, event: bpy.types.Event, position: mathutils.Vector) -> None:
+        self._event = event
+        self.mouse_region_x = position.x
+        self.mouse_region_y = position.y
+
+    def __getattr__(self, name: str) -> typing.Any:
+        return getattr(self._event, name)
+
+
+def make_context_override(
+    context: bpy.types.Context,
+    position: mathutils.Vector | None = None,
+) -> dict[str, typing.Any] | None:
     if not context.window or not context.screen or not context.area or not context.region or not context.space_data:
         return None
+
+    owner_region = window_region_for_position(context, position)
 
     override: dict[str, typing.Any] = {
         "window": context.window,
         "screen": context.screen,
         "area": context.area,
-        "region": context.region,
+        "region": owner_region or context.region,
         "space_data": context.space_data,
     }
-    if context.area.type == 'VIEW_3D' and getattr(context.space_data, "region_3d", None):
-        override["region_data"] = context.space_data.region_3d
+    region_data = region_view3d_for_position(context, position)
+    if region_data is not None:
+        override["region_data"] = region_data
     return override
 
 
@@ -139,6 +386,9 @@ class NavigationPuckWidget:
         self.editor_type: str | None = None
         self.context_key: tuple[int, int, int, int] | None = None
         self.context_override: dict[str, typing.Any] | None = None
+        self.owner_viewport_rects: tuple[ViewportRect, ...] = ()
+        self.owner_viewport_rect: ViewportRect = (0, 0, 1, 1)
+        self.owner_region_data: bpy.types.RegionView3D | None = None
         self.is_camera_view = False
         self.is_camera_view_locked = False
 
@@ -183,18 +433,51 @@ class NavigationPuckWidget:
             self.editor_type = editor_type
         self.is_camera_view = False
         self.is_camera_view_locked = False
-        if self.editor_type == 'VIEW_3D' and getattr(context.space_data, "region_3d", None):
-            rv3d = context.space_data.region_3d
+        if self.editor_type == 'VIEW_3D':
+            rv3d = self.owner_region_data or region_view3d_for_position(context)
+            if rv3d is None:
+                return
             self.is_camera_view = rv3d.view_perspective == 'CAMERA'
             self.is_camera_view_locked = self.is_camera_view and bool(getattr(context.space_data, "lock_camera", False))
 
-    def _set_owner_context(self, context: bpy.types.Context) -> None:
-        self._sync_preferences(context)
+    def _set_owner_context(
+        self,
+        context: bpy.types.Context,
+        position: mathutils.Vector | None = None,
+    ) -> None:
         self.context_key = context_key(context)
-        self.context_override = make_context_override(context)
+        self.context_override = make_context_override(context, position)
+        self.owner_viewport_rect = viewport_local_rect_for_position(context, position)
+        self.owner_viewport_rects = viewport_rects_for_position(context, position)
+        self.owner_region_data = region_view3d_for_position(context, position)
+        self._sync_preferences(context)
+
+    def _update_draw_context(self, context: bpy.types.Context) -> None:
+        self.draw_handler.update_context(context, self.owner_viewport_rects, self.owner_region_data)
+
+    def _owner_local_position(self, position: mathutils.Vector) -> mathutils.Vector:
+        return mathutils.Vector((
+            position.x - self.owner_viewport_rect[0],
+            position.y - self.owner_viewport_rect[1],
+        ))
+
+    def _owner_region_position(self, position: mathutils.Vector) -> mathutils.Vector:
+        return mathutils.Vector((
+            position.x + self.owner_viewport_rect[0],
+            position.y + self.owner_viewport_rect[1],
+        ))
 
     def _context_matches(self, context: bpy.types.Context) -> bool:
-        return self.context_key is None or context_key(context) == self.context_key
+        if self.context_key is None:
+            return True
+
+        current_key = context_key(context)
+        if current_key == self.context_key:
+            return True
+
+        # In Quad View Blender can deliver modal events through a different
+        # WINDOW region than the one that owns the drawn menu.
+        return bool(_quad_view_entries(context) and context_area_key(context) == self.context_key[:3])
 
     def _run_in_owner_context(
         self,
@@ -230,15 +513,17 @@ class NavigationPuckWidget:
         self.drag_select = drag_select
         self.dismiss_on_key_release = dismiss_on_key_release
         self.dismiss_key_type = dismiss_key_type
-        self._set_owner_context(context)
+        raw_event_position = event_region_position(event, self.mouse_pos)
+        owner_position = anchor or raw_event_position
+        self._set_owner_context(context, owner_position)
 
         self.draw_handler.remove()
         self.draw_handler.add(context, self.draw_callback)
+        self._update_draw_context(context)
 
         # setup
-        self.mouse_pos[:] = mathutils.Vector(
-            (event.mouse_region_x, event.mouse_region_y))
-        self.initial_mouse_pos[:] = anchor or self.mouse_pos
+        self.mouse_pos[:] = self._owner_local_position(raw_event_position)
+        self.initial_mouse_pos[:] = self._owner_local_position(owner_position)
         self.ensure_images_loaded()
 
         force_redraw(context)
@@ -263,12 +548,15 @@ class NavigationPuckWidget:
         self.drag_select = drag_select
         self.dismiss_on_key_release = dismiss_on_key_release
         self.dismiss_key_type = dismiss_key_type
-        self._set_owner_context(context)
+        raw_event_position = event_region_position(event, self.mouse_pos)
+        owner_position = anchor or raw_event_position
+        self._set_owner_context(context, owner_position)
         self.draw_handler.remove()
         self.ui.ctx.reset_state()
         self.draw_handler.add(context, self.draw_callback)
-        self.mouse_pos[:] = (event.mouse_region_x, event.mouse_region_y)
-        self.initial_mouse_pos[:] = anchor or self.mouse_pos
+        self._update_draw_context(context)
+        self.mouse_pos[:] = self._owner_local_position(raw_event_position)
+        self.initial_mouse_pos[:] = self._owner_local_position(owner_position)
         self.ensure_images_loaded()
         force_redraw(context)
         return OperatorReturn.FINISHED
@@ -292,6 +580,9 @@ class NavigationPuckWidget:
                 pass
         self.context_key = None
         self.context_override = None
+        self.owner_viewport_rects = ()
+        self.owner_viewport_rect = (0, 0, 1, 1)
+        self.owner_region_data = None
         force_redraw(context)
         return OperatorReturn.FINISHED
 
@@ -305,6 +596,9 @@ class NavigationPuckWidget:
         self.dismiss_key_type = ""
         self.context_key = None
         self.context_override = None
+        self.owner_viewport_rects = ()
+        self.owner_viewport_rect = (0, 0, 1, 1)
+        self.owner_region_data = None
 
     def _view_handlers(self) -> tuple[typing.Any, ...]:
         if self._is_view2d_editor():
@@ -353,7 +647,7 @@ class NavigationPuckWidget:
         context: bpy.types.Context,
         event: bpy.types.Event,
     ) -> OperatorReturnType:
-        anchor = self.mouse_pos.copy()
+        anchor = self._owner_region_position(self.mouse_pos)
         dismiss_key_type = self.dismiss_key_type
         context_override = self.context_override
         result = self.finish(context)
@@ -390,11 +684,11 @@ class NavigationPuckWidget:
             return self._reopen_hotkey_menu_after_action(context, event)
         return self.finish(context, reveal_shortcut=True)
 
-    def _hotkey_menu_pointer_on_button(self, event: bpy.types.Event) -> bool:
+    def _hotkey_menu_pointer_on_button(self, context: bpy.types.Context, event: bpy.types.Event) -> bool:
         if not hasattr(event, "mouse_region_x") or not hasattr(event, "mouse_region_y"):
             return False
 
-        pointer = mathutils.Vector((event.mouse_region_x, event.mouse_region_y))
+        pointer = self._owner_local_position(event_area_position(context, event, self._owner_region_position(self.mouse_pos)))
         if (pointer - self.initial_mouse_pos).length <= HOTKEY_MENU_POINTER_DEAD_ZONE_RADIUS:
             return False
 
@@ -403,7 +697,7 @@ class NavigationPuckWidget:
             for action, rect in self._button_rects().items()
         )
 
-    def _modifier_hotkey_event_should_pass_through(self, event: bpy.types.Event) -> bool:
+    def _modifier_hotkey_event_should_pass_through(self, context: bpy.types.Context, event: bpy.types.Event) -> bool:
         if not self._dismiss_key_is_modifier():
             return False
 
@@ -411,7 +705,7 @@ class NavigationPuckWidget:
             return False
 
         if event.type == 'LEFTMOUSE':
-            return not self._hotkey_menu_pointer_on_button(event)
+            return not self._hotkey_menu_pointer_on_button(context, event)
 
         return True
 
@@ -489,18 +783,21 @@ class NavigationPuckWidget:
         if not self._context_matches(context):
             return OperatorReturn.PASS_THROUGH
 
+        self._update_draw_context(context)
         self._run_in_owner_context(context, self._sync_preferences)
 
         if self.dismiss_on_key_release and event.type == self.dismiss_key_type and event.value == 'RELEASE':
             self._cancel_view_operations()
             return self.finish(context)
 
-        self.mouse_pos[:] = (event.mouse_region_x, event.mouse_region_y)
+        raw_mouse_pos = event_area_position(context, event, self._owner_region_position(self.mouse_pos))
+        self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
+        local_event = RegionLocalEvent(event, self.mouse_pos)
 
         if event.type == 'ESC':
             return self.finish(context)
 
-        pass_through_modifier_hotkey_event = self._modifier_hotkey_event_should_pass_through(event)
+        pass_through_modifier_hotkey_event = self._modifier_hotkey_event_should_pass_through(context, event)
 
         if math.dist(self.mouse_pos, self.initial_mouse_pos) > self.auto_dismiss_distance:  # type: ignore
             self.is_in_radius = False
@@ -509,7 +806,7 @@ class NavigationPuckWidget:
         for view_handler in self._view_handlers():
             handled_view_event = self._run_in_owner_context(
                 context,
-                lambda owner_context, handler=view_handler: handler.event_handler(owner_context, event),
+                lambda owner_context, handler=view_handler: handler.event_handler(owner_context, local_event),
             ) or handled_view_event
 
         if self.is_done_operation and not self._any_view_operation_active():
@@ -560,7 +857,7 @@ class NavigationPuckWidget:
         
 
 
-        if self.ui.ctx.handle_event(event):
+        if self.ui.ctx.handle_event(local_event):
             # Event was consumed by the widget, redraw
             force_redraw(context)
             return OperatorReturn.RUNNING_MODAL
@@ -700,6 +997,9 @@ class NavigationPuckShortcut:
         self.press_started_on_button = False
         self.context_key: tuple[int, int, int, int] | None = None
         self.context_override: dict[str, typing.Any] | None = None
+        self.owner_viewport_rects: tuple[ViewportRect, ...] = ()
+        self.owner_viewport_rect: ViewportRect = (0, 0, 1, 1)
+        self.owner_region_data: bpy.types.RegionView3D | None = None
         self.modal_generation = 0
         self.editor_type: str | None = None
         self.is_camera_view = False
@@ -730,18 +1030,21 @@ class NavigationPuckShortcut:
         self.is_running = True
         self.stop_requested = False
         self.context_key = self._context_key(context)
-        self.context_override = make_context_override(context)
         self._sync_preferences(context)
         if self.activation_mode == ACTIVATION_SHORTCUT_BUTTON:
             self.icon = load_image("explore_wght300.png")
         self._update_region_size(context)
-        self.mouse_pos[:] = self._event_mouse_pos(event, self.button_center)
+        raw_mouse_pos = self._event_region_pos(event, self.button_center)
+        self._sync_owner_viewport(context, raw_mouse_pos)
+        self._update_region_size(context)
+        self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
         self.last_mouse_pos[:] = self.mouse_pos
         self._place_button_from_cursor()
         self._update_target_opacity()
         self.draw_handler.remove()
         self.ui.ctx.reset_state()
         self.draw_handler.add(context, self.draw_callback)
+        self._update_draw_context(context)
         force_redraw(context)
         return OperatorReturn.RUNNING_MODAL
 
@@ -765,6 +1068,9 @@ class NavigationPuckShortcut:
         self.press_started_on_button = False
         self.context_key = None
         self.context_override = None
+        self.owner_viewport_rects = ()
+        self.owner_viewport_rect = (0, 0, 1, 1)
+        self.owner_region_data = None
 
     def finish(self, context: bpy.types.Context) -> OperatorReturnType:
         """End the shortcut operator and clear draw/timer resources."""
@@ -773,6 +1079,9 @@ class NavigationPuckShortcut:
         self.is_running = False
         self.context_key = None
         self.context_override = None
+        self.owner_viewport_rects = ()
+        self.owner_viewport_rect = (0, 0, 1, 1)
+        self.owner_region_data = None
         self.press_started_on_button = False
         force_redraw(context)
         return OperatorReturn.FINISHED
@@ -787,12 +1096,13 @@ class NavigationPuckShortcut:
         context_key = self._context_key(context)
         if context_key != self.context_key:
             self.context_key = context_key
-            self.context_override = make_context_override(context)
+            self._sync_owner_viewport(context, self._owner_region_position(self.mouse_pos))
             self.draw_handler.remove()
             self.draw_handler.add(context, self.draw_callback)
         elif self.context_override is None:
-            self.context_override = make_context_override(context)
+            self._sync_owner_viewport(context, self._owner_region_position(self.mouse_pos))
 
+        self._update_draw_context(context)
         self._sync_preferences(context)
         self._update_region_size(context)
         self._clamp_button_center()
@@ -810,6 +1120,32 @@ class NavigationPuckShortcut:
         self.opacity = 1.0
         self.press_started_on_button = False
         self.ui.ctx.reset_state()
+
+    def _sync_owner_viewport(
+        self,
+        context: bpy.types.Context,
+        position: mathutils.Vector | None = None,
+    ) -> None:
+        self.context_override = make_context_override(context, position)
+        self.owner_viewport_rect = viewport_local_rect_for_position(context, position)
+        self.owner_viewport_rects = viewport_rects_for_position(context, position)
+        self.owner_region_data = region_view3d_for_position(context, position)
+        self._sync_preferences(context)
+
+    def _update_draw_context(self, context: bpy.types.Context) -> None:
+        self.draw_handler.update_context(context, self.owner_viewport_rects, self.owner_region_data)
+
+    def _owner_local_position(self, position: mathutils.Vector) -> mathutils.Vector:
+        return mathutils.Vector((
+            position.x - self.owner_viewport_rect[0],
+            position.y - self.owner_viewport_rect[1],
+        ))
+
+    def _owner_region_position(self, position: mathutils.Vector) -> mathutils.Vector:
+        return mathutils.Vector((
+            position.x + self.owner_viewport_rect[0],
+            position.y + self.owner_viewport_rect[1],
+        ))
 
     def event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Handle mouse movement/clicks while passing normal viewport input through."""
@@ -830,7 +1166,10 @@ class NavigationPuckShortcut:
 
         if self._menu_is_running():
             if hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y"):
-                self.mouse_pos[:] = self._event_mouse_pos(event, self.mouse_pos)
+                raw_mouse_pos = self._event_region_pos(event, self._owner_region_position(self.mouse_pos))
+                self._sync_owner_viewport(context, raw_mouse_pos)
+                self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
+                self._update_draw_context(context)
             self.press_started_on_button = False
             self.target_opacity = 0.0
             self.opacity = 0.0
@@ -842,7 +1181,10 @@ class NavigationPuckShortcut:
             return OperatorReturn.PASS_THROUGH
 
         previous_mouse_pos = self.mouse_pos.copy()
-        self.mouse_pos[:] = self._event_mouse_pos(event, self.mouse_pos)
+        raw_mouse_pos = self._event_region_pos(event, self._owner_region_position(self.mouse_pos))
+        self._sync_owner_viewport(context, raw_mouse_pos)
+        self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
+        self._update_draw_context(context)
 
         if event.type == 'MOUSEMOVE':
             self._update_button_position()
@@ -851,14 +1193,12 @@ class NavigationPuckShortcut:
             return OperatorReturn.PASS_THROUGH
 
         if event.type == 'LEFTMOUSE':
-            is_over_button = self._is_clickable() and self._button_rect().contains(
-                event.mouse_region_x,
-                event.mouse_region_y,
-            )
+            is_over_button = self._is_clickable() and self._button_rect().contains(self.mouse_pos.x, self.mouse_pos.y)
+            local_event = RegionLocalEvent(event, self.mouse_pos)
 
             if event.value == 'PRESS' and is_over_button:
                 self.press_started_on_button = True
-                self.ui.ctx.handle_event(event)
+                self.ui.ctx.handle_event(local_event)
                 self._open_puck_menu(context)
                 self.press_started_on_button = False
                 self.target_opacity = 0.0
@@ -868,7 +1208,7 @@ class NavigationPuckShortcut:
 
             if event.value == 'RELEASE' and self.press_started_on_button:
                 self.press_started_on_button = False
-                self.ui.ctx.handle_event(event)
+                self.ui.ctx.handle_event(local_event)
                 force_redraw(context)
                 return OperatorReturn.RUNNING_MODAL
 
@@ -880,12 +1220,15 @@ class NavigationPuckShortcut:
         if self._menu_is_running():
             return OperatorReturn.PASS_THROUGH
 
-        dismiss_key_type = event.type if keymap.event_matches_hotkey(event) else keymap.held_modifier_hotkey_type(event)
+        dismiss_key_type = keymap.held_modifier_hotkey_type(event)
         if not dismiss_key_type:
             return OperatorReturn.PASS_THROUGH
 
         if hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y"):
-            self.mouse_pos[:] = self._event_mouse_pos(event, self.mouse_pos)
+            raw_mouse_pos = event_area_position(context, event, self._owner_region_position(self.mouse_pos))
+            self._sync_owner_viewport(context, raw_mouse_pos)
+            self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
+            self._update_draw_context(context)
         self.button_center[:] = self.mouse_pos
         self._clamp_button_center()
         self._open_puck_menu(context, drag_select=False, dismiss_key_type=dismiss_key_type)
@@ -901,18 +1244,22 @@ class NavigationPuckShortcut:
             return OperatorReturn.PASS_THROUGH
 
         previous_mouse_pos = self.mouse_pos.copy()
-        self.mouse_pos[:] = self._event_mouse_pos(event, self.mouse_pos)
+        raw_mouse_pos = self._event_region_pos(event, self._owner_region_position(self.mouse_pos))
+        self._sync_owner_viewport(context, raw_mouse_pos)
+        self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
+        self._update_draw_context(context)
 
         view_operation_was_active = self._any_view_operation_active()
+        local_event = RegionLocalEvent(event, self.mouse_pos)
         if view_operation_was_active:
             handled_view_event = False
             for view_handler in self._view_handlers():
                 handled_view_event = self._run_in_owner_context(
                     context,
-                    lambda owner_context, handler=view_handler: handler.event_handler(owner_context, event),
+                    lambda owner_context, handler=view_handler: handler.event_handler(owner_context, local_event),
                 ) or handled_view_event
             if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
-                self.ui.ctx.handle_event(event)
+                self.ui.ctx.handle_event(local_event)
             if not self._any_view_operation_active():
                 self._reveal_at_cursor(self.mouse_pos)
             force_redraw(context)
@@ -922,23 +1269,20 @@ class NavigationPuckShortcut:
             if self.ui.ctx.active_id is None:
                 self._update_button_position()
                 self._update_target_opacity(previous_mouse_pos)
-            self.ui.ctx.handle_event(event)
+            self.ui.ctx.handle_event(local_event)
             force_redraw(context)
             return OperatorReturn.RUNNING_MODAL if self.ui.ctx.active_id is not None else OperatorReturn.PASS_THROUGH
 
         if event.type == 'LEFTMOUSE':
-            is_over_menu = self._direct_menu_is_clickable() and self._direct_menu_contains(
-                event.mouse_region_x,
-                event.mouse_region_y,
-            )
+            is_over_menu = self._direct_menu_is_clickable() and self._direct_menu_contains(self.mouse_pos.x, self.mouse_pos.y)
 
             if event.value == 'PRESS' and is_over_menu:
-                self.ui.ctx.handle_event(event)
+                self.ui.ctx.handle_event(local_event)
                 force_redraw(context)
                 return OperatorReturn.RUNNING_MODAL
 
             if event.value == 'RELEASE' and self.ui.ctx.active_id is not None:
-                self.ui.ctx.handle_event(event)
+                self.ui.ctx.handle_event(local_event)
                 force_redraw(context)
                 return OperatorReturn.RUNNING_MODAL
 
@@ -1118,6 +1462,7 @@ class NavigationPuckShortcut:
         dismiss_key_type: str = "",
     ) -> None:
         dismiss_on_key_release = bool(dismiss_key_type)
+        anchor = self._owner_region_position(self.button_center)
         try:
             if self.context_override:
                 with context.temp_override(**self.context_override):
@@ -1125,8 +1470,8 @@ class NavigationPuckShortcut:
                         'INVOKE_DEFAULT',
                         follow_mouse=False,
                         drag_select=drag_select,
-                        anchor_x=self.button_center.x,
-                        anchor_y=self.button_center.y,
+                        anchor_x=anchor.x,
+                        anchor_y=anchor.y,
                         dismiss_on_key_release=dismiss_on_key_release,
                         dismiss_key_type=dismiss_key_type,
                     )
@@ -1135,8 +1480,8 @@ class NavigationPuckShortcut:
                     'INVOKE_DEFAULT',
                     follow_mouse=False,
                     drag_select=drag_select,
-                    anchor_x=self.button_center.x,
-                    anchor_y=self.button_center.y,
+                    anchor_x=anchor.x,
+                    anchor_y=anchor.y,
                     dismiss_on_key_release=dismiss_on_key_release,
                     dismiss_key_type=dismiss_key_type,
                 )
@@ -1202,6 +1547,12 @@ class NavigationPuckShortcut:
             return callback(context)
 
     def _update_region_size(self, context: bpy.types.Context) -> None:
+        if self.owner_viewport_rect != (0, 0, 1, 1):
+            self.region_size[:] = (
+                max(float(self.owner_viewport_rect[2]), 1.0),
+                max(float(self.owner_viewport_rect[3]), 1.0),
+            )
+            return
         if context.region:
             self.region_size[:] = (max(float(context.region.width), 1.0), max(float(context.region.height), 1.0))
 
@@ -1210,9 +1561,14 @@ class NavigationPuckShortcut:
         event: bpy.types.Event,
         fallback: mathutils.Vector,
     ) -> mathutils.Vector:
-        x = getattr(event, "mouse_region_x", fallback.x)
-        y = getattr(event, "mouse_region_y", fallback.y)
-        return mathutils.Vector((x, y))
+        return self._owner_local_position(self._event_region_pos(event, fallback))
+
+    def _event_region_pos(
+        self,
+        event: bpy.types.Event,
+        fallback: mathutils.Vector,
+    ) -> mathutils.Vector:
+        return event_region_position(event, fallback)
 
     def _debug_bounds_enabled(self, context: bpy.types.Context) -> bool:
         prefs = get_addon_preferences(context)
@@ -1261,8 +1617,10 @@ class NavigationPuckShortcut:
             self.editor_type = editor_type
         self.is_camera_view = False
         self.is_camera_view_locked = False
-        if self.editor_type == 'VIEW_3D' and getattr(context.space_data, "region_3d", None):
-            rv3d = context.space_data.region_3d
+        if self.editor_type == 'VIEW_3D':
+            rv3d = self.owner_region_data or region_view3d_for_position(context)
+            if rv3d is None:
+                return
             self.is_camera_view = rv3d.view_perspective == 'CAMERA'
             self.is_camera_view_locked = self.is_camera_view and bool(getattr(context.space_data, "lock_camera", False))
 
@@ -1401,18 +1759,33 @@ class NavigationPuckHotkeyOperator(bpy.types.Operator):
         if not is_supported_editor_context(context):
             return OperatorReturn.CANCELLED
 
-        anchor_x = float(getattr(event, "mouse_region_x", -1.0))
-        anchor_y = float(getattr(event, "mouse_region_y", -1.0))
+        if event.type in MODIFIER_KEY_STATE_ATTRS and any(app.is_running for app in NavigationPuckShortcutOperator.apps.values()):
+            return OperatorReturn.PASS_THROUGH
+
+        anchor = event_area_position(context, event, mathutils.Vector((-1.0, -1.0)))
+        context_override = make_context_override(context, anchor)
         try:
-            result = bpy.ops.navigation_puck.widget(
-                'INVOKE_DEFAULT',
-                follow_mouse=False,
-                drag_select=False,
-                anchor_x=anchor_x,
-                anchor_y=anchor_y,
-                dismiss_on_key_release=True,
-                dismiss_key_type=event.type,
-            )
+            if context_override:
+                with context.temp_override(**context_override):
+                    result = bpy.ops.navigation_puck.widget(
+                        'INVOKE_DEFAULT',
+                        follow_mouse=False,
+                        drag_select=False,
+                        anchor_x=anchor.x,
+                        anchor_y=anchor.y,
+                        dismiss_on_key_release=True,
+                        dismiss_key_type=event.type,
+                    )
+            else:
+                result = bpy.ops.navigation_puck.widget(
+                    'INVOKE_DEFAULT',
+                    follow_mouse=False,
+                    drag_select=False,
+                    anchor_x=anchor.x,
+                    anchor_y=anchor.y,
+                    dismiss_on_key_release=True,
+                    dismiss_key_type=event.type,
+                )
         except RuntimeError as ex:
             print(f"Navigation Puck hotkey failed to open menu: {ex}")
             return OperatorReturn.CANCELLED

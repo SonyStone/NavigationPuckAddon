@@ -58,6 +58,10 @@ class ViewHandler:
     @staticmethod
     def get_region_view3d(context: bpy.types.Context) -> bpy.types.RegionView3D:
         """Get the current RegionView3D"""
+        region_data = getattr(context, "region_data", None)
+        if region_data is not None and hasattr(region_data, "view_matrix"):
+            return region_data
+
         space_data: typing.Any = context.space_data
         region_3d: bpy.types.RegionView3D = space_data.region_3d
         return region_3d
