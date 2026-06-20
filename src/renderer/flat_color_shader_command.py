@@ -4,7 +4,7 @@ Defines a command to render flat colored shapes using Blender's GPU module.
 import typing
 import dataclasses
 import gpu
-import gpu_extras
+from gpu_extras.batch import batch_for_shader
 
 from .buildin_vertices import RectangleIndices, RectangleVertices
 from .draw_protocol import DrawProtocol
@@ -31,7 +31,7 @@ class FlatColorShaderCommand(DrawProtocol):
         
         shader: gpu.types.GPUShader = gpu.shader.from_builtin('FLAT_COLOR')
 
-        batch = gpu_extras.batch.batch_for_shader(  # type: ignore
+        batch = batch_for_shader(  # type: ignore
             shader,
             'TRIS',
             {

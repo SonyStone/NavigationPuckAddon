@@ -4,8 +4,8 @@ Defines a command to render an image using Blender's GPU module.
 import typing
 import dataclasses
 import gpu
-import gpu_extras
 import bpy
+from gpu_extras.batch import batch_for_shader
 
 from .draw_protocol import DrawProtocol
 
@@ -88,7 +88,7 @@ class ImageShaderCommand(DrawProtocol):
         opacity_shader = None if self.opacity >= 1.0 else get_image_opacity_shader()
         shader = opacity_shader or gpu.shader.from_builtin('IMAGE')
 
-        batch = gpu_extras.batch.batch_for_shader(  # type: ignore
+        batch = batch_for_shader(  # type: ignore
             shader, 'TRIS',
             {
                 "pos": self.pos,

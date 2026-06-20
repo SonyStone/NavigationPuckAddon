@@ -61,7 +61,6 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
         max=80.0,
         subtype='PERCENTAGE',
     )
-
     def draw(self, context: bpy.types.Context):
         """Draw Addon Preferences UI."""
         layout = self.layout

@@ -47,7 +47,8 @@ def get_mouse_vector_to_center(context: bpy.types.Context, pointer_position: mat
 
     viewport_center = get_viewport_center(context)
     vector = pointer_position - viewport_center
-    vector.normalize()
+    if vector.length_squared > 1e-8:
+        vector.normalize()
     return vector
 
 def add_modal_handler(context: bpy.types.Context, operator: bpy.types.Operator) -> bool:

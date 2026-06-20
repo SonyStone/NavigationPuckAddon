@@ -47,6 +47,11 @@ class CameraHandler:
         rv3d = ViewHandler.get_region_view3d(context)
         return rv3d.view_perspective == 'CAMERA' and context.space_data.lock_camera  # type: ignore
 
+    @staticmethod
+    def is_camera_view(context: bpy.types.Context) -> bool:
+        """Check if the 3D View is currently looking through the camera."""
+        return ViewHandler.get_region_view3d(context).view_perspective == 'CAMERA'
+
 
 class ViewHandler:
     """Handler for view operations"""
@@ -152,11 +157,14 @@ class ViewRollHandler:
 
     def pointer_move(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
         """Update the view roll based on mouse movement."""
-        if self.initial_vector is None or self.rotation is None:
+        if self.initial_vector is None or self.rotation is None or self.initial_vector.length_squared <= 1e-8:
             return
 
         pointer_position = get_current_mouse_position(event)
         current_vector = get_mouse_vector_to_center(context, pointer_position)
+        if current_vector.length_squared <= 1e-8:
+            return
+
         delta_angle = self.initial_vector.angle_signed(current_vector)
         delta_angle = apply_angle_snapping(
             delta_angle, self.initial_angle, event.shift)
@@ -184,14 +192,17 @@ class CameraRollHandler:
 
     def pointer_move(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
         """Update the camera roll based on mouse movement."""
-        if self.initial_rotation is None or self.initial_vector is None:
+        if self.initial_rotation is None or self.initial_vector is None or self.initial_vector.length_squared <= 1e-8:
             return
 
         pointer_position = get_current_mouse_position(event)
         current_vector = get_mouse_vector_to_center(context, pointer_position)
+        if current_vector.length_squared <= 1e-8:
+            return
+
         delta_angle = self.initial_vector.angle_signed(current_vector)
         delta_angle = apply_angle_snapping(
-            delta_angle, self.initial_angle, event)
+            delta_angle, self.initial_angle, event.shift)
 
         if self.camera:
             apply_camera_roll(context, self.initial_rotation, delta_angle)
@@ -201,6 +212,13 @@ class CameraRollHandler:
 
 def apply_view_pan(context: bpy.types.Context, delta_pos: mathutils.Vector) -> None:
     """Apply pan to the view"""
+    if CameraHandler.is_camera_view(context):
+        if CameraHandler.is_camera_view_locked(context):
+            apply_camera_pan(context, delta_pos)
+        else:
+            apply_camera_view_pan(context, delta_pos)
+        return
+
     rv3d = ViewHandler.get_region_view3d(context)
     right, up, pan_factor = get_pan_vectors_and_factor(context)
 
@@ -209,6 +227,19 @@ def apply_view_pan(context: bpy.types.Context, delta_pos: mathutils.Vector) -> N
     pan += mathutils.Vector(up) * delta_pos.y * pan_factor
 
     rv3d.view_location += pan
+
+
+def apply_camera_view_pan(context: bpy.types.Context, delta_pos: mathutils.Vector) -> None:
+    """Pan the camera frame display without moving the camera object."""
+    rv3d = ViewHandler.get_region_view3d(context)
+    region = context.region
+    if region is None:
+        return
+
+    width = max(float(region.width), 1.0)
+    height = max(float(region.height), 1.0)
+    rv3d.view_camera_offset[0] += delta_pos.x / width
+    rv3d.view_camera_offset[1] += delta_pos.y / height
 
 
 def apply_camera_pan(context: bpy.types.Context, delta_pos: mathutils.Vector) -> None:
@@ -276,9 +307,23 @@ class CameraPanHandler:
 
 def apply_view_zoom(context: bpy.types.Context, zoom_delta: float) -> None:
     """Apply zoom to the view"""
+    if CameraHandler.is_camera_view(context):
+        if CameraHandler.is_camera_view_locked(context):
+            apply_camera_zoom(context, zoom_delta)
+        else:
+            apply_camera_view_zoom(context, zoom_delta)
+        return
+
     rv3d = ViewHandler.get_region_view3d(context)
     rv3d.view_distance += zoom_delta * rv3d.view_distance * 0.1
     rv3d.view_distance = max(0.1, rv3d.view_distance)
+
+
+def apply_camera_view_zoom(context: bpy.types.Context, zoom_delta: float) -> None:
+    """Zoom the camera frame display without moving the camera object."""
+    rv3d = ViewHandler.get_region_view3d(context)
+    rv3d.view_camera_zoom -= zoom_delta * 50.0
+    rv3d.view_camera_zoom = min(max(rv3d.view_camera_zoom, -30.0), 600.0)
 
 
 def apply_camera_zoom(context: bpy.types.Context, zoom_delta: float) -> None:
@@ -344,6 +389,11 @@ class CameraZoomHandler:
 
 def apply_view_orbit(context: bpy.types.Context, delta: mathutils.Vector, shift: bool = False, sensitivity: float = 0.005) -> None:
     """Apply orbit to the view"""
+    if CameraHandler.is_camera_view(context):
+        if CameraHandler.is_camera_view_locked(context):
+            apply_camera_orbit(context, delta, shift, sensitivity)
+        return
+
     rv3d = ViewHandler.get_region_view3d(context)
     euler = rv3d.view_rotation.to_euler('XYZ')
     snap_angle = math.radians(15.0)
@@ -371,7 +421,7 @@ def apply_view_orbit(context: bpy.types.Context, delta: mathutils.Vector, shift:
     rv3d.view_rotation = euler.to_quaternion()
 
 
-def apply_camera_orbit(context: bpy.types.Context, delta: mathutils.Vector, event: bpy.types.Event, sensitivity: float = 0.005) -> None:
+def apply_camera_orbit(context: bpy.types.Context, delta: mathutils.Vector, shift: bool = False, sensitivity: float = 0.005) -> None:
     """Apply orbit to the camera around the scene cursor while preserving current camera state"""
     camera = CameraHandler.get_camera_object(context)
     if not camera:
@@ -384,7 +434,7 @@ def apply_camera_orbit(context: bpy.types.Context, delta: mathutils.Vector, even
     rot_x = -delta.y * sensitivity
 
     # Apply snapping if shift is pressed
-    if event.shift:
+    if shift:
         rot_z = round(rot_z / snap_angle) * snap_angle
         rot_x = round(rot_x / snap_angle) * snap_angle
 
@@ -443,7 +493,7 @@ class ViewOrbitHandler:
         current_pos = get_current_mouse_position(event)
         delta = self.prev_pos - current_pos
 
-        apply_view_orbit(context, delta, event, self.sensitivity)
+        apply_view_orbit(context, delta, event.shift, self.sensitivity)
         self.prev_pos = current_pos
 
 
@@ -467,7 +517,7 @@ class CameraOrbitHandler:
         current_pos = get_current_mouse_position(event)
         delta = self.prev_pos - current_pos
 
-        apply_camera_orbit(context, delta, event, self.sensitivity)
+        apply_camera_orbit(context, delta, event.shift, self.sensitivity)
         self.prev_pos = current_pos
 
 # Composite handlers using composition
