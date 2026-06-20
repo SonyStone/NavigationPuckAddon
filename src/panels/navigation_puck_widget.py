@@ -23,8 +23,51 @@ def get_addon_preferences(context: bpy.types.Context) -> typing.Any | None:
     return addon.preferences
 
 
+def get_activation_mode(context: bpy.types.Context) -> str:
+    prefs = get_addon_preferences(context)
+    return str(getattr(prefs, "activation_mode", ACTIVATION_SHORTCUT_BUTTON))
+
+
 SUPPORTED_EDITOR_TYPES = {'VIEW_3D', 'IMAGE_EDITOR', 'NODE_EDITOR'}
 VIEW2D_EDITOR_TYPES = {'IMAGE_EDITOR', 'NODE_EDITOR'}
+ACTIVATION_SHORTCUT_BUTTON = 'SHORTCUT_BUTTON'
+ACTIVATION_DIRECT_MENU = 'DIRECT_MENU'
+ACTIVATION_HOTKEY_MENU = 'HOTKEY_MENU'
+OVERLAY_ACTIVATION_MODES = {ACTIVATION_SHORTCUT_BUTTON, ACTIVATION_DIRECT_MENU, ACTIVATION_HOTKEY_MENU}
+MODIFIER_KEY_STATE_ATTRS = {
+    'LEFT_SHIFT': 'shift',
+    'RIGHT_SHIFT': 'shift',
+    'LEFT_CTRL': 'ctrl',
+    'RIGHT_CTRL': 'ctrl',
+    'LEFT_ALT': 'alt',
+    'RIGHT_ALT': 'alt',
+    'OSKEY': 'oskey',
+}
+HOTKEY_MENU_POINTER_DEAD_ZONE_RADIUS = 12.0
+SHORTCUT_CURSOR_DIRECTIONS = {
+    'TOP_LEFT': (-1.0, 1.0),
+    'TOP': (0.0, 1.0),
+    'TOP_RIGHT': (1.0, 1.0),
+    'LEFT': (-1.0, 0.0),
+    'RIGHT': (1.0, 0.0),
+    'BOTTOM_LEFT': (-1.0, -1.0),
+    'BOTTOM': (0.0, -1.0),
+    'BOTTOM_RIGHT': (1.0, -1.0),
+}
+
+
+def get_mode_menu_button_size(
+    prefs: typing.Any,
+    activation_mode: str,
+    fallback: float,
+) -> float:
+    fallback = float(getattr(prefs, "menu_button_size", fallback))
+    prop_name = {
+        ACTIVATION_SHORTCUT_BUTTON: "shortcut_menu_button_size",
+        ACTIVATION_DIRECT_MENU: "direct_menu_button_size",
+        ACTIVATION_HOTKEY_MENU: "hotkey_menu_button_size",
+    }.get(activation_mode, "menu_button_size")
+    return max(float(getattr(prefs, prop_name, fallback)), 1.0)
 
 
 def context_editor_type(context: bpy.types.Context) -> str | None:
@@ -60,10 +103,14 @@ def make_context_override(context: bpy.types.Context) -> dict[str, typing.Any] |
 
 def is_supported_editor_context(context: bpy.types.Context) -> bool:
     return bool(
-        context.area
+        context.window
+        and context.screen
+        and context.area
         and context.area.type in SUPPORTED_EDITOR_TYPES
         and context.region
         and context.region.type == 'WINDOW'
+        and context.space_data
+        and context.space_data.type in SUPPORTED_EDITOR_TYPES
     )
 
 
@@ -106,6 +153,8 @@ class NavigationPuckWidget:
         
         self.follow_mouse = False
         self.drag_select = False
+        self.dismiss_on_key_release = False
+        self.dismiss_key_type = ""
         self.drag_select_start_distance = 30.0
         self.is_running = False
         self.stop_requested = False
@@ -123,7 +172,8 @@ class NavigationPuckWidget:
 
     def _sync_preferences(self, context: bpy.types.Context) -> None:
         prefs = get_addon_preferences(context)
-        self.button_sizes = max(float(getattr(prefs, "menu_button_size", self.button_sizes)), 1.0)
+        activation_mode = get_activation_mode(context)
+        self.button_sizes = get_mode_menu_button_size(prefs, activation_mode, self.button_sizes)
         self.drag_select_start_distance = max(
             float(getattr(prefs, "drag_select_threshold_radius", self.drag_select_start_distance)),
             0.0,
@@ -167,6 +217,8 @@ class NavigationPuckWidget:
         follow_mouse: bool = False,
         drag_select: bool = False,
         anchor: mathutils.Vector | None = None,
+        dismiss_on_key_release: bool = False,
+        dismiss_key_type: str = "",
     ) -> OperatorReturnType:
         """Start the modal operator and initialize widget"""
         self.is_running = True
@@ -176,6 +228,8 @@ class NavigationPuckWidget:
         self.is_done_operation = False
         self.follow_mouse = follow_mouse
         self.drag_select = drag_select
+        self.dismiss_on_key_release = dismiss_on_key_release
+        self.dismiss_key_type = dismiss_key_type
         self._set_owner_context(context)
 
         self.draw_handler.remove()
@@ -198,6 +252,8 @@ class NavigationPuckWidget:
         follow_mouse: bool = False,
         drag_select: bool = False,
         anchor: mathutils.Vector | None = None,
+        dismiss_on_key_release: bool = False,
+        dismiss_key_type: str = "",
     ) -> OperatorReturnType:
         """Move an already-running menu to the pointer instead of stacking modals."""
         self.is_pressed = follow_mouse or drag_select
@@ -205,6 +261,8 @@ class NavigationPuckWidget:
         self.is_done_operation = False
         self.follow_mouse = follow_mouse
         self.drag_select = drag_select
+        self.dismiss_on_key_release = dismiss_on_key_release
+        self.dismiss_key_type = dismiss_key_type
         self._set_owner_context(context)
         self.draw_handler.remove()
         self.ui.ctx.reset_state()
@@ -225,6 +283,8 @@ class NavigationPuckWidget:
         self.draw_handler.remove()
         self.ui.ctx.reset_state()
         self.is_running = False
+        self.dismiss_on_key_release = False
+        self.dismiss_key_type = ""
         if reveal_shortcut:
             try:
                 NavigationPuckShortcutOperator.reveal_after_menu(context, owner_key, self.mouse_pos)
@@ -241,6 +301,8 @@ class NavigationPuckWidget:
         self.ui.ctx.reset_state()
         self.is_running = False
         self.stop_requested = True
+        self.dismiss_on_key_release = False
+        self.dismiss_key_type = ""
         self.context_key = None
         self.context_override = None
 
@@ -267,6 +329,91 @@ class NavigationPuckWidget:
 
     def _any_view_operation_active(self) -> bool:
         return any(handler.view_op.is_active for handler in self._view_handlers())
+
+    def _cancel_view_operations(self) -> None:
+        for handler in self._view_handlers():
+            handler.view_op.is_active = False
+
+    def _dismiss_modifier_is_held(self, event: bpy.types.Event) -> bool:
+        modifier_attr = MODIFIER_KEY_STATE_ATTRS.get(self.dismiss_key_type)
+        if modifier_attr is None:
+            return False
+        if event.type == self.dismiss_key_type and event.value == 'RELEASE':
+            return False
+        return bool(getattr(event, modifier_attr, False))
+
+    def _dismiss_key_is_modifier(self) -> bool:
+        return self.dismiss_on_key_release and self.dismiss_key_type in MODIFIER_KEY_STATE_ATTRS
+
+    def _should_reopen_hotkey_menu_after_action(self, event: bpy.types.Event) -> bool:
+        return self.dismiss_on_key_release and self._dismiss_modifier_is_held(event)
+
+    def _reopen_hotkey_menu_after_action(
+        self,
+        context: bpy.types.Context,
+        event: bpy.types.Event,
+    ) -> OperatorReturnType:
+        anchor = self.mouse_pos.copy()
+        dismiss_key_type = self.dismiss_key_type
+        context_override = self.context_override
+        result = self.finish(context)
+
+        try:
+            if context_override:
+                with context.temp_override(**context_override):
+                    bpy.ops.navigation_puck.widget(
+                        'INVOKE_DEFAULT',
+                        follow_mouse=False,
+                        drag_select=False,
+                        anchor_x=anchor.x,
+                        anchor_y=anchor.y,
+                        dismiss_on_key_release=True,
+                        dismiss_key_type=dismiss_key_type,
+                    )
+            else:
+                bpy.ops.navigation_puck.widget(
+                    'INVOKE_DEFAULT',
+                    follow_mouse=False,
+                    drag_select=False,
+                    anchor_x=anchor.x,
+                    anchor_y=anchor.y,
+                    dismiss_on_key_release=True,
+                    dismiss_key_type=dismiss_key_type,
+                )
+        except (ReferenceError, RuntimeError, TypeError) as ex:
+            print(f"Navigation Puck hotkey failed to reopen menu: {ex}")
+
+        return result
+
+    def _finish_after_completed_operation(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
+        if self._should_reopen_hotkey_menu_after_action(event):
+            return self._reopen_hotkey_menu_after_action(context, event)
+        return self.finish(context, reveal_shortcut=True)
+
+    def _hotkey_menu_pointer_on_button(self, event: bpy.types.Event) -> bool:
+        if not hasattr(event, "mouse_region_x") or not hasattr(event, "mouse_region_y"):
+            return False
+
+        pointer = mathutils.Vector((event.mouse_region_x, event.mouse_region_y))
+        if (pointer - self.initial_mouse_pos).length <= HOTKEY_MENU_POINTER_DEAD_ZONE_RADIUS:
+            return False
+
+        return any(
+            self._supports_action(action) and rect.contains(pointer.x, pointer.y)
+            for action, rect in self._button_rects().items()
+        )
+
+    def _modifier_hotkey_event_should_pass_through(self, event: bpy.types.Event) -> bool:
+        if not self._dismiss_key_is_modifier():
+            return False
+
+        if self._any_view_operation_active() or self.ui.ctx.active_id is not None:
+            return False
+
+        if event.type == 'LEFTMOUSE':
+            return not self._hotkey_menu_pointer_on_button(event)
+
+        return True
 
     def _debug_bounds_enabled(self, context: bpy.types.Context) -> bool:
         prefs = get_addon_preferences(context)
@@ -343,10 +490,17 @@ class NavigationPuckWidget:
             return OperatorReturn.PASS_THROUGH
 
         self._run_in_owner_context(context, self._sync_preferences)
+
+        if self.dismiss_on_key_release and event.type == self.dismiss_key_type and event.value == 'RELEASE':
+            self._cancel_view_operations()
+            return self.finish(context)
+
         self.mouse_pos[:] = (event.mouse_region_x, event.mouse_region_y)
 
         if event.type == 'ESC':
             return self.finish(context)
+
+        pass_through_modifier_hotkey_event = self._modifier_hotkey_event_should_pass_through(event)
 
         if math.dist(self.mouse_pos, self.initial_mouse_pos) > self.auto_dismiss_distance:  # type: ignore
             self.is_in_radius = False
@@ -359,7 +513,7 @@ class NavigationPuckWidget:
             ) or handled_view_event
 
         if self.is_done_operation and not self._any_view_operation_active():
-            return self.finish(context, reveal_shortcut=True)
+            return self._finish_after_completed_operation(context, event)
 
         if handled_view_event:
             if self.follow_mouse:
@@ -399,10 +553,10 @@ class NavigationPuckWidget:
         if not self.is_pressed and not self.is_in_radius:
             # self.draw_handler.remove()
             force_redraw(context)
-            return OperatorReturn.RUNNING_MODAL
+            return OperatorReturn.PASS_THROUGH if pass_through_modifier_hotkey_event else OperatorReturn.RUNNING_MODAL
 
         if self.is_done_operation and not self.is_pressed:
-            return self.finish(context, reveal_shortcut=True)
+            return self._finish_after_completed_operation(context, event)
         
 
 
@@ -412,7 +566,7 @@ class NavigationPuckWidget:
             return OperatorReturn.RUNNING_MODAL
 
         force_redraw(context)
-        return OperatorReturn.RUNNING_MODAL
+        return OperatorReturn.PASS_THROUGH if pass_through_modifier_hotkey_event else OperatorReturn.RUNNING_MODAL
 
     def draw_callback(self, _op: typing.Any, context: bpy.types.Context):
         """
@@ -535,6 +689,10 @@ class NavigationPuckShortcut:
         self.button_center = mathutils.Vector((42.0, 42.0))
         self.region_size = mathutils.Vector((1.0, 1.0))
         self.icon = None
+        self.image_pan = None
+        self.image_orbit = None
+        self.image_zoom = None
+        self.image_roll = None
         self.opacity = 0.0
         self.target_opacity = 0.0
         self.is_running = False
@@ -543,12 +701,25 @@ class NavigationPuckShortcut:
         self.context_key: tuple[int, int, int, int] | None = None
         self.context_override: dict[str, typing.Any] | None = None
         self.modal_generation = 0
+        self.editor_type: str | None = None
+        self.is_camera_view = False
+        self.is_camera_view_locked = False
+
+        self.view_pan = ViewPan()
+        self.view_orbit = ViewOrbit()
+        self.view_zoom = ViewZoom()
+        self.view_roll = ViewRoll()
+        self.view2d_pan = View2DPan()
+        self.view2d_zoom = View2DZoom()
 
         self.button_size = 45.0
+        self.menu_button_size = 55.0
         self.margin = 14.0
         self.cursor_distance = 80.0
-        self.follow_zone_radius = self._calculate_follow_zone_radius(self.cursor_distance)
+        self.cursor_position = 'BOTTOM_LEFT'
+        self.activation_mode = ACTIVATION_SHORTCUT_BUTTON
         self.cursor_offset = mathutils.Vector((-self.cursor_distance, -self.cursor_distance))
+        self.follow_zone_radius = self._calculate_follow_zone_radius(self.cursor_offset)
         self.idle_opacity = 0.0
         self.click_opacity_threshold = 0.12
         self.fade_zone_min_inset = 10.0
@@ -558,10 +729,11 @@ class NavigationPuckShortcut:
         """Start the shortcut modal overlay."""
         self.is_running = True
         self.stop_requested = False
-        self.icon = load_image("explore_wght300.png")
         self.context_key = self._context_key(context)
         self.context_override = make_context_override(context)
         self._sync_preferences(context)
+        if self.activation_mode == ACTIVATION_SHORTCUT_BUTTON:
+            self.icon = load_image("explore_wght300.png")
         self._update_region_size(context)
         self.mouse_pos[:] = self._event_mouse_pos(event, self.button_center)
         self.last_mouse_pos[:] = self.mouse_pos
@@ -572,6 +744,16 @@ class NavigationPuckShortcut:
         self.draw_handler.add(context, self.draw_callback)
         force_redraw(context)
         return OperatorReturn.RUNNING_MODAL
+
+    def _ensure_direct_menu_images(self) -> None:
+        if not self.image_pan:
+            self.image_pan = load_image("pan_tool_wght300.png")
+        if not self.image_orbit:
+            self.image_orbit = load_image("3d_rotation_wght300.png")
+        if not self.image_zoom:
+            self.image_zoom = load_image("zoom_in_wght300.png")
+        if not self.image_roll:
+            self.image_roll = load_image("flip_camera_wght300.png")
 
     def shutdown(self) -> None:
         """Request a clean modal shutdown from add-on unregister."""
@@ -618,12 +800,16 @@ class NavigationPuckShortcut:
 
     def reveal_after_menu(self, mouse_pos: mathutils.Vector) -> None:
         """Show the shortcut near the cursor after a puck action finishes."""
+        self._reveal_at_cursor(mouse_pos)
+
+    def _reveal_at_cursor(self, mouse_pos: mathutils.Vector) -> None:
         self.mouse_pos[:] = mouse_pos
         self.button_center[:] = mouse_pos
         self._clamp_button_center()
         self.target_opacity = 1.0
         self.opacity = 1.0
         self.press_started_on_button = False
+        self.ui.ctx.reset_state()
 
     def event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
         """Handle mouse movement/clicks while passing normal viewport input through."""
@@ -635,6 +821,12 @@ class NavigationPuckShortcut:
 
         self._sync_preferences(context)
         self._update_region_size(context)
+
+        if self.activation_mode == ACTIVATION_HOTKEY_MENU:
+            return self._hotkey_event_handler(context, event)
+
+        if self.activation_mode == ACTIVATION_DIRECT_MENU:
+            return self._direct_menu_event_handler(context, event)
 
         if self._menu_is_running():
             if hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y"):
@@ -682,12 +874,89 @@ class NavigationPuckShortcut:
 
         return OperatorReturn.PASS_THROUGH
 
+    def _hotkey_event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
+        from .. import keymap
+
+        if self._menu_is_running():
+            return OperatorReturn.PASS_THROUGH
+
+        dismiss_key_type = event.type if keymap.event_matches_hotkey(event) else keymap.held_modifier_hotkey_type(event)
+        if not dismiss_key_type:
+            return OperatorReturn.PASS_THROUGH
+
+        if hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y"):
+            self.mouse_pos[:] = self._event_mouse_pos(event, self.mouse_pos)
+        self.button_center[:] = self.mouse_pos
+        self._clamp_button_center()
+        self._open_puck_menu(context, drag_select=False, dismiss_key_type=dismiss_key_type)
+        force_redraw(context)
+        return OperatorReturn.PASS_THROUGH if dismiss_key_type in MODIFIER_KEY_STATE_ATTRS else OperatorReturn.RUNNING_MODAL
+
+    def _direct_menu_event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
+        if self._menu_is_running():
+            return OperatorReturn.PASS_THROUGH
+
+        has_mouse_position = hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y")
+        if not has_mouse_position:
+            return OperatorReturn.PASS_THROUGH
+
+        previous_mouse_pos = self.mouse_pos.copy()
+        self.mouse_pos[:] = self._event_mouse_pos(event, self.mouse_pos)
+
+        view_operation_was_active = self._any_view_operation_active()
+        if view_operation_was_active:
+            handled_view_event = False
+            for view_handler in self._view_handlers():
+                handled_view_event = self._run_in_owner_context(
+                    context,
+                    lambda owner_context, handler=view_handler: handler.event_handler(owner_context, event),
+                ) or handled_view_event
+            if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+                self.ui.ctx.handle_event(event)
+            if not self._any_view_operation_active():
+                self._reveal_at_cursor(self.mouse_pos)
+            force_redraw(context)
+            return OperatorReturn.RUNNING_MODAL if handled_view_event or view_operation_was_active else OperatorReturn.PASS_THROUGH
+
+        if event.type == 'MOUSEMOVE':
+            if self.ui.ctx.active_id is None:
+                self._update_button_position()
+                self._update_target_opacity(previous_mouse_pos)
+            self.ui.ctx.handle_event(event)
+            force_redraw(context)
+            return OperatorReturn.RUNNING_MODAL if self.ui.ctx.active_id is not None else OperatorReturn.PASS_THROUGH
+
+        if event.type == 'LEFTMOUSE':
+            is_over_menu = self._direct_menu_is_clickable() and self._direct_menu_contains(
+                event.mouse_region_x,
+                event.mouse_region_y,
+            )
+
+            if event.value == 'PRESS' and is_over_menu:
+                self.ui.ctx.handle_event(event)
+                force_redraw(context)
+                return OperatorReturn.RUNNING_MODAL
+
+            if event.value == 'RELEASE' and self.ui.ctx.active_id is not None:
+                self.ui.ctx.handle_event(event)
+                force_redraw(context)
+                return OperatorReturn.RUNNING_MODAL
+
+        return OperatorReturn.PASS_THROUGH
+
     def draw_callback(self, _op: typing.Any, context: bpy.types.Context):
         """Draw the shortcut icon and its debug zones."""
+        self._sync_preferences(context)
+        if self.activation_mode == ACTIVATION_HOTKEY_MENU:
+            return
+
+        if self.activation_mode == ACTIVATION_DIRECT_MENU:
+            self._draw_direct_menu(context)
+            return
+
         if self._menu_is_running():
             return
 
-        self._sync_preferences(context)
         debug_bounds = self._debug_bounds_enabled(context)
         draw_opacity = max(self.opacity, 0.65) if debug_bounds else self.opacity
 
@@ -739,24 +1008,137 @@ class NavigationPuckShortcut:
 
         self.ui.end_frame()
 
-    def _open_puck_menu(self, context: bpy.types.Context) -> None:
+    def _draw_direct_menu(self, context: bpy.types.Context) -> None:
+        if self._menu_is_running():
+            return
+
+        if self._any_view_operation_active():
+            self.ui.ctx.reset_state()
+            return
+
+        self._ensure_direct_menu_images()
+        debug_bounds = self._debug_bounds_enabled(context)
+        draw_opacity = max(self.opacity, 0.65) if debug_bounds else self.opacity
+        if draw_opacity <= 0.01:
+            return
+
+        self.ui.begin_frame(self.mouse_pos)
+        rects = self._direct_menu_rects()
+
+        if self.image_pan and self._supports_action("pan"):
+            response = self.ui.icon_button(
+                self.image_pan,
+                (rects["pan"].x, rects["pan"].y),
+                (rects["pan"].width, rects["pan"].height),
+                "navigation_puck_direct_pan",
+                opacity=draw_opacity,
+            )
+            self._handle_direct_menu_response(context, "pan", response)
+
+        if self.image_orbit and self._supports_action("orbit"):
+            response = self.ui.icon_button(
+                self.image_orbit,
+                (rects["orbit"].x, rects["orbit"].y),
+                (rects["orbit"].width, rects["orbit"].height),
+                "navigation_puck_direct_orbit",
+                opacity=draw_opacity,
+            )
+            self._handle_direct_menu_response(context, "orbit", response)
+
+        if self.image_zoom and self._supports_action("zoom"):
+            response = self.ui.icon_button(
+                self.image_zoom,
+                (rects["zoom"].x, rects["zoom"].y),
+                (rects["zoom"].width, rects["zoom"].height),
+                "navigation_puck_direct_zoom",
+                opacity=draw_opacity,
+            )
+            self._handle_direct_menu_response(context, "zoom", response)
+
+        if self.image_roll and self._supports_action("roll"):
+            response = self.ui.icon_button(
+                self.image_roll,
+                (rects["roll"].x, rects["roll"].y),
+                (rects["roll"].width, rects["roll"].height),
+                "navigation_puck_direct_roll",
+                opacity=draw_opacity,
+            )
+            self._handle_direct_menu_response(context, "roll", response)
+
+        if debug_bounds:
+            self.ui.renderer.add(CircleOutlineCommand(
+                center=(self.button_center.x, self.button_center.y),
+                radius=self.follow_zone_radius,
+                color=(0.0, 0.85, 1.0, 0.85),
+                width=2.0,
+            ))
+
+        self.ui.end_frame()
+
+    def _handle_direct_menu_response(
+        self,
+        context: bpy.types.Context,
+        action: str,
+        response: typing.Any,
+    ) -> None:
+        if not response.clicked and not response.dragged:
+            return
+
+        pointer_offset = self.mouse_pos - self.button_center
+        if action == "pan":
+            self._run_in_owner_context(
+                context,
+                lambda owner_context: self._pan_handler().apply(owner_context, response.drag_delta, pointer_offset),
+            )
+        elif action == "orbit":
+            self._run_in_owner_context(
+                context,
+                lambda owner_context: self.view_orbit.apply(
+                    owner_context,
+                    response.drag_delta,
+                    pointer_offset,
+                    response.shift,
+                ),
+            )
+        elif action == "zoom":
+            self._run_in_owner_context(
+                context,
+                lambda owner_context: self._zoom_handler().apply(owner_context, response.drag_delta, pointer_offset),
+            )
+        elif action == "roll":
+            self._run_in_owner_context(
+                context,
+                lambda owner_context: self.view_roll.apply(owner_context, self.mouse_pos, pointer_offset),
+            )
+
+    def _open_puck_menu(
+        self,
+        context: bpy.types.Context,
+        drag_select: bool = True,
+        dismiss_key_type: str = "",
+    ) -> None:
+        dismiss_on_key_release = bool(dismiss_key_type)
         try:
             if self.context_override:
                 with context.temp_override(**self.context_override):
                     bpy.ops.navigation_puck.widget(
                         'INVOKE_DEFAULT',
                         follow_mouse=False,
-                        drag_select=True,
+                        drag_select=drag_select,
                         anchor_x=self.button_center.x,
                         anchor_y=self.button_center.y,
+                        dismiss_on_key_release=dismiss_on_key_release,
+                        dismiss_key_type=dismiss_key_type,
                     )
             else:
                 bpy.ops.navigation_puck.widget(
                     'INVOKE_DEFAULT',
                     follow_mouse=False,
-                    drag_select=True,
+                    drag_select=drag_select,
                     anchor_x=self.button_center.x,
                     anchor_y=self.button_center.y,
+                    dismiss_on_key_release=dismiss_on_key_release,
+                    dismiss_key_type=dismiss_key_type,
                 )
         except RuntimeError as ex:
             print(f"Navigation Puck shortcut failed to open menu: {ex}")
@@ -773,6 +1155,26 @@ class NavigationPuckShortcut:
             self.button_size,
         )
 
+    def _direct_menu_rects(self) -> dict[str, Rect]:
+        x, y = self.button_center
+        size = self.menu_button_size
+        offset = 5.0
+        return {
+            "pan": Rect(x - size - 0.5 + offset, y - size - 0.5 + offset, size, size),
+            "orbit": Rect(x + 0.5 + offset, y - size - 0.5 + offset, size, size),
+            "zoom": Rect(x - size - 0.5 + offset, y + 0.5 + offset, size, size),
+            "roll": Rect(x + 0.5 + offset, y + 0.5 + offset, size, size),
+        }
+
+    def _direct_menu_contains(self, x: float, y: float) -> bool:
+        return any(
+            self._supports_action(action) and rect.contains(x, y)
+            for action, rect in self._direct_menu_rects().items()
+        )
+
+    def _direct_menu_is_clickable(self) -> bool:
+        return self.opacity >= self.click_opacity_threshold
+
     def _cursor_in_follow_zone(self) -> bool:
         return (self.mouse_pos - self.button_center).length <= self.follow_zone_radius
 
@@ -784,6 +1186,20 @@ class NavigationPuckShortcut:
 
     def _context_is_supported_editor(self, context: bpy.types.Context) -> bool:
         return is_supported_editor_context(context)
+
+    def _run_in_owner_context(
+        self,
+        context: bpy.types.Context,
+        callback: typing.Callable[[bpy.types.Context], typing.Any],
+    ) -> typing.Any:
+        if not self.context_override:
+            return callback(context)
+
+        try:
+            with context.temp_override(**self.context_override):
+                return callback(bpy.context)
+        except (ReferenceError, RuntimeError, TypeError):
+            return callback(context)
 
     def _update_region_size(self, context: bpy.types.Context) -> None:
         if context.region:
@@ -802,28 +1218,69 @@ class NavigationPuckShortcut:
         prefs = get_addon_preferences(context)
         return bool(getattr(prefs, "debug_shortcut_bounds", False))
 
+    def _view_handlers(self) -> tuple[typing.Any, ...]:
+        if self._is_view2d_editor():
+            return (self.view2d_pan, self.view2d_zoom)
+        return (self.view_pan, self.view_orbit, self.view_zoom, self.view_roll)
+
+    def _is_view2d_editor(self) -> bool:
+        return self.editor_type in VIEW2D_EDITOR_TYPES
+
+    def _supports_action(self, action: str) -> bool:
+        if self._is_view2d_editor():
+            return action in {'pan', 'zoom'}
+        if self.is_camera_view and not self.is_camera_view_locked:
+            return action in {'pan', 'zoom'}
+        return action in {'pan', 'orbit', 'zoom', 'roll'}
+
+    def _pan_handler(self) -> typing.Any:
+        return self.view2d_pan if self._is_view2d_editor() else self.view_pan
+
+    def _zoom_handler(self) -> typing.Any:
+        return self.view2d_zoom if self._is_view2d_editor() else self.view_zoom
+
+    def _any_view_operation_active(self) -> bool:
+        return any(handler.view_op.is_active for handler in self._view_handlers())
+
     def _sync_preferences(self, context: bpy.types.Context) -> None:
         prefs = get_addon_preferences(context)
+        self.activation_mode = get_activation_mode(context)
         self.button_size = max(float(getattr(prefs, "shortcut_button_size", self.button_size)), 1.0)
+        self.menu_button_size = get_mode_menu_button_size(prefs, self.activation_mode, self.menu_button_size)
         self.fade_zone_inset_percent = max(
             float(getattr(prefs, "shortcut_fade_start_inset_percent", self.fade_zone_inset_percent)),
             0.0,
         )
         distance = getattr(prefs, "shortcut_cursor_distance", self.cursor_distance)
         self.cursor_distance = max(float(distance), self.button_size * 0.5)
-        self.follow_zone_radius = self._calculate_follow_zone_radius(self.cursor_distance)
-        self.cursor_offset[:] = (-self.cursor_distance, -self.cursor_distance)
+        self.cursor_position = str(getattr(prefs, "shortcut_cursor_position", self.cursor_position))
+        self.cursor_offset[:] = self._calculate_cursor_offset(self.cursor_position, self.cursor_distance)
+        self.follow_zone_radius = self._calculate_follow_zone_radius(self.cursor_offset)
+        editor_type = context_editor_type(context)
+        if editor_type in SUPPORTED_EDITOR_TYPES:
+            self.editor_type = editor_type
+        self.is_camera_view = False
+        self.is_camera_view_locked = False
+        if self.editor_type == 'VIEW_3D' and getattr(context.space_data, "region_3d", None):
+            rv3d = context.space_data.region_3d
+            self.is_camera_view = rv3d.view_perspective == 'CAMERA'
+            self.is_camera_view_locked = self.is_camera_view and bool(getattr(context.space_data, "lock_camera", False))
 
-    def _calculate_follow_zone_radius(self, cursor_distance: float) -> float:
-        diagonal_distance = cursor_distance * math.sqrt(2.0)
-        return max(self.button_size, diagonal_distance + self.button_size * 0.5)
+    def _calculate_cursor_offset(self, cursor_position: str, cursor_distance: float) -> mathutils.Vector:
+        direction = SHORTCUT_CURSOR_DIRECTIONS.get(cursor_position, SHORTCUT_CURSOR_DIRECTIONS['BOTTOM_LEFT'])
+        return mathutils.Vector((direction[0] * cursor_distance, direction[1] * cursor_distance))
+
+    def _calculate_follow_zone_radius(self, cursor_offset: mathutils.Vector) -> float:
+        edge_radius = self.menu_button_size if self.activation_mode == ACTIVATION_DIRECT_MENU else self.button_size * 0.5
+        return max(edge_radius * 2.0, cursor_offset.length + edge_radius)
 
     def _fade_start_radius(self) -> float:
         inset = max(
             self.fade_zone_min_inset,
             self.follow_zone_radius * (self.fade_zone_inset_percent / 100.0),
         )
-        return max(self.button_size * 0.5, self.follow_zone_radius - inset)
+        edge_radius = self.menu_button_size if self.activation_mode == ACTIVATION_DIRECT_MENU else self.button_size * 0.5
+        return max(edge_radius, self.follow_zone_radius - inset)
 
     def _menu_is_running(self) -> bool:
         return NavigationPuckWidgetOperator.app.is_running
@@ -838,7 +1295,10 @@ class NavigationPuckShortcut:
         self._clamp_button_center()
 
     def _clamp_button_center(self) -> None:
-        half_size = self.button_size * 0.5
+        if self.activation_mode == ACTIVATION_DIRECT_MENU:
+            half_size = self.menu_button_size + 6.0
+        else:
+            half_size = self.button_size * 0.5
         min_x = self.margin + half_size
         min_y = self.margin + half_size
         max_x = max(min_x, self.region_size.x - self.margin - half_size)
@@ -854,8 +1314,10 @@ class NavigationPuckShortcut:
 
         distance_to_button = (self.mouse_pos - self.button_center).length
         fade_start_radius = self._fade_start_radius()
-        full_visible_radius = self.button_size * 0.5
-        if self._button_rect().contains(self.mouse_pos.x, self.mouse_pos.y):
+        full_visible_radius = self.menu_button_size if self.activation_mode == ACTIVATION_DIRECT_MENU else self.button_size * 0.5
+        if self.activation_mode == ACTIVATION_DIRECT_MENU and self._direct_menu_contains(self.mouse_pos.x, self.mouse_pos.y):
+            proximity = 1.0
+        elif self._button_rect().contains(self.mouse_pos.x, self.mouse_pos.y):
             proximity = 1.0
         elif distance_to_button <= full_visible_radius:
             proximity = 1.0
@@ -876,6 +1338,8 @@ class NavigationPuckWidgetOperator(bpy.types.Operator):
 
     follow_mouse: bpy.props.BoolProperty(default=False) # type: ignore
     drag_select: bpy.props.BoolProperty(default=False) # type: ignore
+    dismiss_on_key_release: bpy.props.BoolProperty(default=False) # type: ignore
+    dismiss_key_type: bpy.props.StringProperty(default="") # type: ignore
     anchor_x: bpy.props.FloatProperty(default=-1.0) # type: ignore
     anchor_y: bpy.props.FloatProperty(default=-1.0) # type: ignore
 
@@ -893,12 +1357,28 @@ class NavigationPuckWidgetOperator(bpy.types.Operator):
             anchor = mathutils.Vector((self.anchor_x, self.anchor_y))
 
         if self.app.is_running:
-            return self.app.reopen(context, event, self.follow_mouse, self.drag_select, anchor)
+            return self.app.reopen(
+                context,
+                event,
+                self.follow_mouse,
+                self.drag_select,
+                anchor,
+                self.dismiss_on_key_release,
+                self.dismiss_key_type,
+            )
 
         if not add_modal_handler(context, self):
             return OperatorReturn.CANCELLED
 
-        return self.app.invoke(context, event, self.follow_mouse, self.drag_select, anchor)
+        return self.app.invoke(
+            context,
+            event,
+            self.follow_mouse,
+            self.drag_select,
+            anchor,
+            self.dismiss_on_key_release,
+            self.dismiss_key_type,
+        )
 
     # Override Operator method
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
@@ -909,6 +1389,41 @@ class NavigationPuckWidgetOperator(bpy.types.Operator):
         """
 
         return self.app.event_handler(context, event)
+
+
+class NavigationPuckHotkeyOperator(bpy.types.Operator):
+    """Open the Navigation Puck from a keymap item."""
+    bl_idname = "navigation_puck.hotkey"
+    bl_label = "Navigation Puck Hotkey"
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
+        if not is_supported_editor_context(context):
+            return OperatorReturn.CANCELLED
+
+        anchor_x = float(getattr(event, "mouse_region_x", -1.0))
+        anchor_y = float(getattr(event, "mouse_region_y", -1.0))
+        try:
+            result = bpy.ops.navigation_puck.widget(
+                'INVOKE_DEFAULT',
+                follow_mouse=False,
+                drag_select=False,
+                anchor_x=anchor_x,
+                anchor_y=anchor_y,
+                dismiss_on_key_release=True,
+                dismiss_key_type=event.type,
+            )
+        except RuntimeError as ex:
+            print(f"Navigation Puck hotkey failed to open menu: {ex}")
+            return OperatorReturn.CANCELLED
+
+        if 'CANCELLED' in result:
+            return OperatorReturn.CANCELLED
+
+        if event.type in MODIFIER_KEY_STATE_ATTRS:
+            return OperatorReturn.PASS_THROUGH
+
+        return OperatorReturn.FINISHED
 
 
 class NavigationPuckShortcutOperator(bpy.types.Operator):
@@ -981,6 +1496,28 @@ class NavigationPuckShortcutOperator(bpy.types.Operator):
 
 
 _shortcut_autostart_enabled = False
+SHORTCUT_AUTOSTART_INITIAL_DELAY = 1.0
+SHORTCUT_AUTOSTART_INTERVAL = 0.5
+
+
+def _uses_overlay_activation(context: bpy.types.Context) -> bool:
+    return get_activation_mode(context) in OVERLAY_ACTIVATION_MODES
+
+
+def refresh_activation_runtime(context: bpy.types.Context | None = None) -> None:
+    """Start or stop cursor-driven overlay operators for the selected activation mode."""
+    global _shortcut_autostart_enabled
+
+    context = context or bpy.context
+    _shortcut_autostart_enabled = _uses_overlay_activation(context)
+    if _shortcut_autostart_enabled:
+        if not bpy.app.timers.is_registered(_start_shortcut_operator):
+            bpy.app.timers.register(_start_shortcut_operator, first_interval=SHORTCUT_AUTOSTART_INITIAL_DELAY)
+        return
+
+    NavigationPuckShortcutOperator.shutdown_all()
+    if bpy.app.timers.is_registered(_start_shortcut_operator):
+        bpy.app.timers.unregister(_start_shortcut_operator)
 
 
 def _editor_context_key(override: dict[str, typing.Any]) -> tuple[int, int, int, int]:
@@ -999,15 +1536,23 @@ def _find_supported_editor_overrides() -> list[dict[str, typing.Any]]:
 
     overrides: list[dict[str, typing.Any]] = []
     for window in wm.windows:
-        screen = window.screen
-        for area in screen.areas:
-            if area.type not in SUPPORTED_EDITOR_TYPES:
+        try:
+            screen = window.screen
+            if screen is None:
                 continue
-            space = area.spaces.active
-            if space.type not in SUPPORTED_EDITOR_TYPES:
-                continue
-            for region in area.regions:
-                if region.type == 'WINDOW':
+
+            for area in screen.areas:
+                if area.type not in SUPPORTED_EDITOR_TYPES:
+                    continue
+
+                space = area.spaces.active
+                if space is None or space.type not in SUPPORTED_EDITOR_TYPES:
+                    continue
+
+                for region in area.regions:
+                    if region.type != 'WINDOW':
+                        continue
+
                     override = {
                         "window": window,
                         "screen": screen,
@@ -1016,52 +1561,61 @@ def _find_supported_editor_overrides() -> list[dict[str, typing.Any]]:
                         "space_data": space,
                     }
                     if area.type == 'VIEW_3D':
-                        override["region_data"] = space.region_3d
+                        region_data = getattr(space, "region_3d", None)
+                        if region_data is None:
+                            continue
+                        override["region_data"] = region_data
                     overrides.append(override)
                     break
+        except (ReferenceError, RuntimeError, TypeError):
+            continue
     return overrides
 
 
 def _start_shortcut_operator() -> float | None:
-    if not _shortcut_autostart_enabled:
+    if bpy.app.background:
+        return None
+
+    if not _shortcut_autostart_enabled or not _uses_overlay_activation(bpy.context):
+        NavigationPuckShortcutOperator.shutdown_all()
         return None
 
     overrides = _find_supported_editor_overrides()
     if not overrides:
         NavigationPuckShortcutOperator.shutdown_all()
-        return 0.5
+        return SHORTCUT_AUTOSTART_INTERVAL
 
-    existing_keys = {_editor_context_key(override) for override in overrides}
+    existing_keys: set[tuple[int, int, int, int]] = set()
+    for override in overrides:
+        try:
+            existing_keys.add(_editor_context_key(override))
+        except (ReferenceError, RuntimeError, TypeError):
+            continue
     NavigationPuckShortcutOperator.prune_missing(existing_keys)
 
     for override in overrides:
-        key = _editor_context_key(override)
-        app = NavigationPuckShortcutOperator.get_app(key)
-        if app and app.is_running:
-            with bpy.context.temp_override(**override):
-                app.refresh_context(bpy.context)
-            continue
-
         try:
+            key = _editor_context_key(override)
+            app = NavigationPuckShortcutOperator.get_app(key)
             with bpy.context.temp_override(**override):
-                bpy.ops.navigation_puck.shortcut('INVOKE_DEFAULT')
-        except RuntimeError as ex:
+                if app and app.is_running:
+                    app.refresh_context(bpy.context)
+                else:
+                    bpy.ops.navigation_puck.shortcut('INVOKE_DEFAULT')
+        except (ReferenceError, RuntimeError, TypeError) as ex:
             print(f"Navigation Puck shortcut autostart failed: {ex}")
 
-    return 0.5
+    return SHORTCUT_AUTOSTART_INTERVAL
 
 
 def register() -> None:
-    global _shortcut_autostart_enabled
-    _shortcut_autostart_enabled = True
-    if not bpy.app.timers.is_registered(_start_shortcut_operator):
-        bpy.app.timers.register(_start_shortcut_operator, first_interval=0.25)
+    refresh_activation_runtime(bpy.context)
 
 
 def unregister() -> None:
     global _shortcut_autostart_enabled
     _shortcut_autostart_enabled = False
-    NavigationPuckWidgetOperator.app.shutdown()
-    NavigationPuckShortcutOperator.shutdown_all()
     if bpy.app.timers.is_registered(_start_shortcut_operator):
         bpy.app.timers.unregister(_start_shortcut_operator)
+    NavigationPuckWidgetOperator.app.shutdown()
+    NavigationPuckShortcutOperator.shutdown_all()

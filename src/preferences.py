@@ -3,12 +3,40 @@ Preferences for the Navigation Puck addon.
 This module defines the addon preferences, including keybinding customization.
 """
 
+import typing
+
 import bpy
 import rna_keymap_ui
 
-from .panels import CURRENT_MAIN_WIDGET
-
 from .. import __package__ as base_package
+
+
+class NavigationPuckSetHotkeyOperator(bpy.types.Operator):
+    """Set the Navigation Puck hotkey to a preset key."""
+
+    bl_idname = "navigation_puck.set_hotkey"
+    bl_label = "Set Navigation Puck Hotkey"
+    bl_options = {'INTERNAL'}
+
+    key_type: bpy.props.StringProperty() # type: ignore
+
+    def execute(self, context: bpy.types.Context):
+        from . import keymap
+
+        if not keymap.set_hotkey(self.key_type):
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+def _refresh_activation_mode(self: typing.Any, context: bpy.types.Context) -> None:
+    try:
+        from . import keymap
+        from .panels import navigation_puck_widget
+
+        keymap.refresh_keymaps()
+        navigation_puck_widget.refresh_activation_runtime(context)
+    except Exception as ex:
+        print(f"Navigation Puck failed to refresh activation mode: {ex}")
 
 
 class NavigationPuckPreferences(bpy.types.AddonPreferences):
@@ -16,6 +44,17 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
     # The `bl_idname` must match the addon module name in `bl_info`
     bl_idname = base_package # type: ignore
 
+    activation_mode: bpy.props.EnumProperty( # type: ignore
+        name="Activation mode",
+        description="Choose how the Navigation Puck Menu opens",
+        items=(
+            ('SHORTCUT_BUTTON', "Shortcut Button", "Show a small shortcut button near the cursor"),
+            ('DIRECT_MENU', "Menu Near Cursor", "Show the Navigation Puck Menu near the cursor"),
+            ('HOTKEY_MENU', "Hotkey", "Open the Navigation Puck Menu from a keyboard shortcut"),
+        ),
+        default='SHORTCUT_BUTTON',
+        update=_refresh_activation_mode,
+    )
     debug_shortcut_bounds: bpy.props.BoolProperty( # type: ignore
         name="Debug mode",
         description="Show shortcut bounds and puck drag-select debug values",
@@ -29,6 +68,21 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
         max=240.0,
         subtype='PIXEL',
     )
+    shortcut_cursor_position: bpy.props.EnumProperty( # type: ignore
+        name="Shortcut position",
+        description="Position of the shortcut button relative to the cursor",
+        items=(
+            ('TOP_LEFT', "Top Left", "Place the shortcut above and left of the cursor"),
+            ('TOP', "Top", "Place the shortcut above the cursor"),
+            ('TOP_RIGHT', "Top Right", "Place the shortcut above and right of the cursor"),
+            ('LEFT', "Left", "Place the shortcut left of the cursor"),
+            ('RIGHT', "Right", "Place the shortcut right of the cursor"),
+            ('BOTTOM_LEFT', "Bottom Left", "Place the shortcut below and left of the cursor"),
+            ('BOTTOM', "Bottom", "Place the shortcut below the cursor"),
+            ('BOTTOM_RIGHT', "Bottom Right", "Place the shortcut below and right of the cursor"),
+        ),
+        default='BOTTOM_LEFT',
+    )
     shortcut_button_size: bpy.props.FloatProperty( # type: ignore
         name="Shortcut button size",
         description="Size in pixels of the small shortcut button",
@@ -40,6 +94,30 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
     menu_button_size: bpy.props.FloatProperty( # type: ignore
         name="Menu button size",
         description="Size in pixels of each Navigation Puck Menu button",
+        default=55.0,
+        min=32.0,
+        max=128.0,
+        subtype='PIXEL',
+    )
+    shortcut_menu_button_size: bpy.props.FloatProperty( # type: ignore
+        name="Menu button size",
+        description="Size in pixels of each Navigation Puck Menu button opened from the shortcut button",
+        default=55.0,
+        min=32.0,
+        max=128.0,
+        subtype='PIXEL',
+    )
+    direct_menu_button_size: bpy.props.FloatProperty( # type: ignore
+        name="Menu button size",
+        description="Size in pixels of each Navigation Puck Menu Near Cursor button",
+        default=55.0,
+        min=32.0,
+        max=128.0,
+        subtype='PIXEL',
+    )
+    hotkey_menu_button_size: bpy.props.FloatProperty( # type: ignore
+        name="Menu button size",
+        description="Size in pixels of each Navigation Puck Menu button opened from the hotkey",
         default=55.0,
         min=32.0,
         max=128.0,
@@ -64,26 +142,62 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
     def draw(self, context: bpy.types.Context):
         """Draw Addon Preferences UI."""
         layout = self.layout
-        layout.prop(self, "debug_shortcut_bounds")
-        layout.prop(self, "shortcut_cursor_distance")
-        layout.prop(self, "shortcut_button_size")
-        layout.prop(self, "menu_button_size")
-        layout.prop(self, "drag_select_threshold_radius")
-        layout.prop(self, "shortcut_fade_start_inset_percent")
+        layout.prop(self, "activation_mode")
+
+        match self.activation_mode:
+            case 'DIRECT_MENU':
+                self._draw_direct_menu_settings(layout)
+            case 'HOTKEY_MENU':
+                self._draw_hotkey_settings(context, layout)
+            case _:
+                self._draw_shortcut_button_settings(layout)
+
+    def _draw_shortcut_button_settings(self, layout: bpy.types.UILayout) -> None:
+        box = layout.box()
+        box.label(text="Shortcut Button")
+        box.prop(self, "shortcut_cursor_distance")
+        box.prop(self, "shortcut_cursor_position")
+        box.prop(self, "shortcut_button_size")
+        box.prop(self, "shortcut_menu_button_size")
+        box.prop(self, "drag_select_threshold_radius")
+        box.prop(self, "shortcut_fade_start_inset_percent")
+        box.prop(self, "debug_shortcut_bounds")
+
+    def _draw_direct_menu_settings(self, layout: bpy.types.UILayout) -> None:
+        box = layout.box()
+        box.label(text="Menu Near Cursor")
+        box.prop(self, "shortcut_cursor_distance", text="Menu cursor distance")
+        box.prop(self, "shortcut_cursor_position", text="Menu position")
+        box.prop(self, "direct_menu_button_size")
+        box.prop(self, "debug_shortcut_bounds")
+
+    def _draw_hotkey_settings(self, context: bpy.types.Context, layout: bpy.types.UILayout) -> None:
+        box = layout.box()
+        box.label(text="Hotkey")
+        box.prop(self, "hotkey_menu_button_size")
 
         wm = context.window_manager
         if wm is None:
             return
-        kc = wm.keyconfigs.user
 
+        from . import keymap
+
+        preset_row = box.row(align=True)
+        preset_row.label(text="Preset keys")
+        for label, key_type in (("Alt", "LEFT_ALT"), ("Ctrl", "LEFT_CTRL"), ("Space", "SPACE")):
+            op = preset_row.operator(NavigationPuckSetHotkeyOperator.bl_idname, text=label)
+            op.key_type = key_type
+
+        kc = wm.keyconfigs.addon
         if kc:
-            km = kc.keymaps.get("3D View")
-            if km:
-                for kmi in km.keymap_items:
-                    if kmi.idname == CURRENT_MAIN_WIDGET.bl_idname:
-                        rna_keymap_ui.draw_kmi([], kc, km, kmi, layout, 0) # type: ignore
+            for km, kmi in keymap.get_hotkey_keymaps():
+                rna_keymap_ui.draw_kmi([], kc, km, kmi, box, 0) # type: ignore
+
+        if keymap.hotkey_uses_space():
+            box.label(text="Space disables Blender's default Spacebar action while this mode is active.", icon='INFO')
 
 
 classes = (
+    NavigationPuckSetHotkeyOperator,
     NavigationPuckPreferences,
 )

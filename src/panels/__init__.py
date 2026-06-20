@@ -4,6 +4,7 @@ CURRENT_MAIN_WIDGET = navigation_puck_widget.NavigationPuckWidgetOperator
 
 classes = (
     CURRENT_MAIN_WIDGET,
+    navigation_puck_widget.NavigationPuckHotkeyOperator,
     navigation_puck_widget.NavigationPuckShortcutOperator,
 )
 

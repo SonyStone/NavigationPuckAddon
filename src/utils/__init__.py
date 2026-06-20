@@ -53,8 +53,19 @@ def get_mouse_vector_to_center(context: bpy.types.Context, pointer_position: mat
 
 def add_modal_handler(context: bpy.types.Context, operator: bpy.types.Operator) -> bool:
     """Add a modal handler to the context"""
-    if context.window_manager is not None:
-        context.window_manager.modal_handler_add(operator)
-        return True
-    else:
+    if (
+        context.window_manager is None
+        or context.window is None
+        or context.screen is None
+        or context.area is None
+        or context.region is None
+        or context.region.type != 'WINDOW'
+    ):
         return False
+
+    try:
+        context.window_manager.modal_handler_add(operator)
+    except (ReferenceError, RuntimeError, TypeError):
+        return False
+
+    return True

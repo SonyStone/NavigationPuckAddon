@@ -36,7 +36,7 @@ class CircleOutlineCommand(DrawProtocol, UnwrapProtocol):
 
         for index in range(segment_count):
             outer_current = index * 2
-            inner_current = outer_current + 1
+            inner_current = outer_current + 1 
             outer_next = ((index + 1) % segment_count) * 2
             inner_next = outer_next + 1
             indices.append((outer_current, outer_next, inner_next))

@@ -4,7 +4,7 @@
 
 Adds a custom navigation puck widget to Blender's 3D View, allowing for enhanced navigation controls.
 
-By default it is bind to "V" shortcut, but can be changed in addon preferences
+By default the puck opens from a small shortcut button near the cursor. Add-on preferences also include a direct menu mode and a hotkey mode. The hotkey mode defaults to Left Alt and can be edited in preferences.
 
 ---
 
