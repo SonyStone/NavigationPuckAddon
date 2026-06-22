@@ -80,32 +80,11 @@ class InputEventAdapter:
 
     def to_pointer_event(self, event: bpy.types.Event) -> PointerEvent | None:
         """Handle Blender event and convert to imgui event format"""
-        event_type = EventType.NONE
-        button = None
-        delta = mathutils.Vector(
-            (event.mouse_prev_x - event.mouse_x, event.mouse_prev_y - event.mouse_y))
+        pointer_event_kind = self._pointer_event_kind(event)
+        if pointer_event_kind is None:
+            return None
 
-        match event.type:
-            case 'MOUSEMOVE':
-                if self.pointer_down is not None:
-                    event_type = EventType.POINTER_MOVE
-                    button = self.pointer_down
-                else:
-                    event_type = EventType.POINTER_MOVE
-
-            case 'LEFTMOUSE' | 'RIGHTMOUSE' | 'MIDDLEMOUSE':
-                match event.value:
-                    case 'PRESS':
-                        event_type = EventType.POINTER_DOWN
-                        self.pointer_down = PointerButton(event.type)
-                    case 'RELEASE':
-                        event_type = EventType.POINTER_UP
-                    case _:
-                        pass
-
-                button = PointerButton(event.type)
-            case _:
-                return None
+        event_type, button = pointer_event_kind
 
         if event_type == EventType.NONE:
             return None
@@ -117,7 +96,7 @@ class InputEventAdapter:
             shift=event.shift,
             ctrl=event.ctrl,
             alt=event.alt,
-            delta=delta,
+            delta=self._event_delta(event),
             timestamp=time.time(),
         )
 
@@ -125,3 +104,27 @@ class InputEventAdapter:
             self.pointer_down = None
 
         return pointer_event
+
+    def _pointer_event_kind(self, event: bpy.types.Event) -> tuple[EventType, PointerButton | None] | None:
+        match event.type:
+            case 'MOUSEMOVE':
+                return EventType.POINTER_MOVE, self.pointer_down
+            case 'LEFTMOUSE' | 'RIGHTMOUSE' | 'MIDDLEMOUSE':
+                return self._mouse_button_event_kind(event)
+            case _:
+                return None
+
+    def _mouse_button_event_kind(self, event: bpy.types.Event) -> tuple[EventType, PointerButton]:
+        button = PointerButton(event.type)
+        match event.value:
+            case 'PRESS':
+                self.pointer_down = button
+                return EventType.POINTER_DOWN, button
+            case 'RELEASE':
+                return EventType.POINTER_UP, button
+            case _:
+                return EventType.NONE, button
+
+    @staticmethod
+    def _event_delta(event: bpy.types.Event) -> mathutils.Vector:
+        return mathutils.Vector((event.mouse_prev_x - event.mouse_x, event.mouse_prev_y - event.mouse_y))

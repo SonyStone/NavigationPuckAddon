@@ -12,6 +12,15 @@ addon_keymaps: list[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]] = []
 DEFAULT_HOTKEY = 'LEFT_ALT'
 HOTKEY_OPERATOR_ID = navigation_puck_widget.NavigationPuckHotkeyOperator.bl_idname
 HOTKEY_KEYMAP_NAME = "Window"
+HOTKEY_PRESS_VALUE = 'PRESS'
+NO_KEY_MODIFIER = 'NONE'
+HOTKEY_MODIFIER_FLAGS = ("any", "shift", "ctrl", "alt", "oskey")
+MODIFIER_MATCH_CHECKS = (
+    ("shift", "shift", {'LEFT_SHIFT', 'RIGHT_SHIFT'}),
+    ("ctrl", "ctrl", {'LEFT_CTRL', 'RIGHT_CTRL'}),
+    ("alt", "alt", {'LEFT_ALT', 'RIGHT_ALT'}),
+    ("oskey", "oskey", {'OSKEY'}),
+)
 
 
 def _get_addon_preferences():
@@ -50,6 +59,37 @@ def _primary_hotkey() -> bpy.types.KeyMapItem | None:
     return addon_keymaps[0][1]
 
 
+def _active_hotkey() -> bpy.types.KeyMapItem | None:
+    kmi = _primary_hotkey()
+    if kmi is None or not _hotkey_mode_enabled():
+        return None
+    return kmi
+
+
+def _clear_hotkey_modifiers(kmi: bpy.types.KeyMapItem) -> None:
+    for modifier_flag in HOTKEY_MODIFIER_FLAGS:
+        setattr(kmi, modifier_flag, False)
+    kmi.key_modifier = NO_KEY_MODIFIER
+
+
+def _has_no_modifier_flags(kmi: bpy.types.KeyMapItem) -> bool:
+    return all(not getattr(kmi, modifier_flag) for modifier_flag in HOTKEY_MODIFIER_FLAGS)
+
+
+def _is_key_press(kmi: bpy.types.KeyMapItem, key_type: str) -> bool:
+    return kmi.type == key_type and kmi.value == HOTKEY_PRESS_VALUE
+
+
+def _is_plain_key_press(kmi: bpy.types.KeyMapItem | None, key_type: str) -> bool:
+    if kmi is None:
+        return False
+    return (
+        _is_key_press(kmi, key_type)
+        and _has_no_modifier_flags(kmi)
+        and kmi.key_modifier == NO_KEY_MODIFIER
+    )
+
+
 def set_hotkey(key_type: str) -> bool:
     """Set the editable hotkey row to a plain key press."""
     _ensure_hotkey_keymap()
@@ -58,13 +98,8 @@ def set_hotkey(key_type: str) -> bool:
         return False
 
     kmi.type = key_type
-    kmi.value = 'PRESS'
-    kmi.any = False
-    kmi.shift = False
-    kmi.ctrl = False
-    kmi.alt = False
-    kmi.oskey = False
-    kmi.key_modifier = 'NONE'
+    kmi.value = HOTKEY_PRESS_VALUE
+    _clear_hotkey_modifiers(kmi)
     kmi.active = _hotkey_mode_enabled()
     return True
 
@@ -87,18 +122,7 @@ def get_hotkey_keymaps() -> tuple[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem],
 
 
 def _is_plain_space(kmi: bpy.types.KeyMapItem | None) -> bool:
-    if kmi is None:
-        return False
-    return (
-        kmi.type == 'SPACE'
-        and kmi.value == 'PRESS'
-        and not kmi.any
-        and not kmi.shift
-        and not kmi.ctrl
-        and not kmi.alt
-        and not kmi.oskey
-        and kmi.key_modifier == 'NONE'
-    )
+    return _is_plain_key_press(kmi, 'SPACE')
 
 
 def hotkey_uses_space() -> bool:
@@ -106,42 +130,55 @@ def hotkey_uses_space() -> bool:
     return _is_plain_space(_primary_hotkey())
 
 
+def _modifier_state_matches(event_value: bool, keymap_value: bool, ignore_state: bool) -> bool:
+    return ignore_state or bool(event_value) == bool(keymap_value)
+
+
+def _hotkey_modifier_states_match(event: bpy.types.Event, kmi: bpy.types.KeyMapItem) -> bool:
+    return all(
+        _modifier_state_matches(
+            getattr(event, event_attr),
+            getattr(kmi, keymap_attr),
+            kmi.type in ignored_key_types,
+        )
+        for event_attr, keymap_attr, ignored_key_types in MODIFIER_MATCH_CHECKS
+    )
+
+
+def _event_matches_keymap_item(event: bpy.types.Event, kmi: bpy.types.KeyMapItem) -> bool:
+    return event.type == kmi.type and event.value == kmi.value
+
+
 def event_matches_hotkey(event: bpy.types.Event) -> bool:
     """Return True when a modal event matches the configured hotkey."""
-    kmi = _primary_hotkey()
-    if kmi is None or not _hotkey_mode_enabled():
+    kmi = _active_hotkey()
+    if kmi is None:
         return False
 
-    if event.type != kmi.type or event.value != kmi.value:
+    if not _event_matches_keymap_item(event, kmi):
         return False
 
     if kmi.any:
         return True
 
-    ignore_shift = kmi.type in {'LEFT_SHIFT', 'RIGHT_SHIFT'}
-    ignore_ctrl = kmi.type in {'LEFT_CTRL', 'RIGHT_CTRL'}
-    ignore_alt = kmi.type in {'LEFT_ALT', 'RIGHT_ALT'}
-    ignore_oskey = kmi.type in {'OSKEY'}
+    return _hotkey_modifier_states_match(event, kmi)
 
-    return (
-        (ignore_shift or bool(event.shift) == bool(kmi.shift))
-        and (ignore_ctrl or bool(event.ctrl) == bool(kmi.ctrl))
-        and (ignore_alt or bool(event.alt) == bool(kmi.alt))
-        and (ignore_oskey or bool(event.oskey) == bool(kmi.oskey))
-    )
+
+def _event_releases_hotkey(event: bpy.types.Event, kmi: bpy.types.KeyMapItem) -> bool:
+    return event.type == kmi.type and event.value == 'RELEASE'
 
 
 def held_modifier_hotkey_type(event: bpy.types.Event) -> str:
     """Return the configured modifier hotkey type while it is currently held."""
-    kmi = _primary_hotkey()
-    if kmi is None or not _hotkey_mode_enabled():
+    kmi = _active_hotkey()
+    if kmi is None:
         return ""
 
     modifier_attr = navigation_puck_widget.MODIFIER_KEY_STATE_ATTRS.get(kmi.type)
     if modifier_attr is None:
         return ""
 
-    if event.type == kmi.type and event.value == 'RELEASE':
+    if _event_releases_hotkey(event, kmi):
         return ""
 
     return kmi.type if bool(getattr(event, modifier_attr, False)) else ""

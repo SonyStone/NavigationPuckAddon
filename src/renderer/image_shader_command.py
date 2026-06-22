@@ -11,6 +11,30 @@ from .draw_protocol import DrawProtocol
 
 _IMAGE_OPACITY_SHADER: gpu.types.GPUShader | None = None
 _IMAGE_OPACITY_SHADER_FAILED = False
+IMAGE_OPACITY_VERTEX_SHADER = """
+    uniform mat4 ModelViewProjectionMatrix;
+    in vec2 pos;
+    in vec2 texCoord;
+    out vec2 texCoord_interp;
+
+    void main()
+    {
+        texCoord_interp = texCoord;
+        gl_Position = ModelViewProjectionMatrix * vec4(pos.xy, 0.0, 1.0);
+    }
+"""
+IMAGE_OPACITY_FRAGMENT_SHADER = """
+    uniform sampler2D image;
+    uniform float opacity;
+    in vec2 texCoord_interp;
+    out vec4 fragColor;
+
+    void main()
+    {
+        vec4 color = texture(image, texCoord_interp);
+        fragColor = vec4(color.rgb, color.a * opacity);
+    }
+"""
 
 
 def get_image_opacity_shader() -> gpu.types.GPUShader | None:
@@ -20,32 +44,8 @@ def get_image_opacity_shader() -> gpu.types.GPUShader | None:
         return None
 
     if _IMAGE_OPACITY_SHADER is None:
-        vertex_shader = """
-            uniform mat4 ModelViewProjectionMatrix;
-            in vec2 pos;
-            in vec2 texCoord;
-            out vec2 texCoord_interp;
-
-            void main()
-            {
-                texCoord_interp = texCoord;
-                gl_Position = ModelViewProjectionMatrix * vec4(pos.xy, 0.0, 1.0);
-            }
-        """
-        fragment_shader = """
-            uniform sampler2D image;
-            uniform float opacity;
-            in vec2 texCoord_interp;
-            out vec4 fragColor;
-
-            void main()
-            {
-                vec4 color = texture(image, texCoord_interp);
-                fragColor = vec4(color.rgb, color.a * opacity);
-            }
-        """
         try:
-            _IMAGE_OPACITY_SHADER = gpu.types.GPUShader(vertex_shader, fragment_shader)
+            _IMAGE_OPACITY_SHADER = gpu.types.GPUShader(IMAGE_OPACITY_VERTEX_SHADER, IMAGE_OPACITY_FRAGMENT_SHADER)
         except Exception as ex:
             _IMAGE_OPACITY_SHADER_FAILED = True
             print(f"Image opacity shader disabled: {ex}")

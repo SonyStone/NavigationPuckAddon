@@ -209,24 +209,36 @@ class View2DZoom:
 
         return False
 
+    def _image_zoom_factor(self, delta_y: float) -> float:
+        return 1.0 + min(
+            abs(float(delta_y)) * self.zoom_factor_scale * UV_IMAGE_ZOOM_SPEED_FACTOR,
+            0.035 * UV_IMAGE_ZOOM_SPEED_FACTOR,
+        )
+
+    def _view2d_zoom_factor(self, delta_y: float) -> float:
+        return 1.0 + min(abs(float(delta_y)) * self.zoom_factor_scale, 0.035)
+
+    def _apply_image_zoom(self, delta_y: float) -> None:
+        factor = self._image_zoom_factor(delta_y)
+        if delta_y < 0.0:
+            bpy.ops.image.view_zoom(factor=factor, use_cursor_init=False)
+        elif delta_y > 0.0:
+            bpy.ops.image.view_zoom(factor=1.0 / factor, use_cursor_init=False)
+
+    def _apply_view2d_zoom(self, delta_y: float) -> None:
+        factor = self._view2d_zoom_factor(delta_y)
+        if delta_y < 0.0:
+            bpy.ops.view2d.zoom_in(zoomfacx=factor, zoomfacy=factor)
+        elif delta_y > 0.0:
+            bpy.ops.view2d.zoom_out(zoomfacx=factor, zoomfacy=factor)
+
     def _apply_zoom(self, context: bpy.types.Context, delta: mathutils.Vector) -> None:
         try:
             if is_image_editor(context):
-                factor = 1.0 + min(
-                    abs(float(delta.y)) * self.zoom_factor_scale * UV_IMAGE_ZOOM_SPEED_FACTOR,
-                    0.035 * UV_IMAGE_ZOOM_SPEED_FACTOR,
-                )
-                if delta.y < 0.0:
-                    bpy.ops.image.view_zoom(factor=factor, use_cursor_init=False)
-                elif delta.y > 0.0:
-                    bpy.ops.image.view_zoom(factor=1.0 / factor, use_cursor_init=False)
+                self._apply_image_zoom(delta.y)
                 return
 
-            factor = 1.0 + min(abs(float(delta.y)) * self.zoom_factor_scale, 0.035)
-            if delta.y < 0.0:
-                bpy.ops.view2d.zoom_in(zoomfacx=factor, zoomfacy=factor)
-            elif delta.y > 0.0:
-                bpy.ops.view2d.zoom_out(zoomfacx=factor, zoomfacy=factor)
+            self._apply_view2d_zoom(delta.y)
         except (TypeError, RuntimeError):
             self.view_op.is_active = False
 
@@ -266,31 +278,45 @@ class ViewRoll:
         self.initial_angle = ViewHandler.get_current_roll_angle(context)
         self.initial_vector = get_mouse_vector_to_center(context, mouse_pos)
 
-    def event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> bool:
-        """Handle roll events"""
+    def _current_roll_vector(
+        self,
+        context: bpy.types.Context,
+        event: bpy.types.Event,
+    ) -> mathutils.Vector | None:
+        pointer_position = get_current_mouse_position(event)
+        current_vector = get_mouse_vector_to_center(context, pointer_position)
+        if current_vector.length_squared <= 1e-8:
+            return None
+        return current_vector
 
-        self.view_op.event_handler(event)
+    def _roll_delta_angle(self, current_vector: mathutils.Vector, shift: bool) -> float:
+        delta_angle = self.initial_vector.angle_signed(current_vector)
+        return apply_angle_snapping(delta_angle, self.initial_angle, shift)
 
-        if self.view_op.is_active:
-            if self.initial_vector is None or self.initial_vector.length_squared <= 1e-8:
+    def _apply_roll_delta(self, context: bpy.types.Context, delta_angle: float) -> bool:
+        if CameraHandler.is_camera_view_locked(context):
+            if self.camera_rotation is None:
                 return False
-            pointer_position = get_current_mouse_position(event)
-            current_vector = get_mouse_vector_to_center(
-                context, pointer_position)
-            if current_vector.length_squared <= 1e-8:
-                return False
-
-            delta_angle = self.initial_vector.angle_signed(current_vector)
-            delta_angle = apply_angle_snapping(
-                delta_angle, self.initial_angle, event.shift)
-            if CameraHandler.is_camera_view_locked(context):
-                if self.camera_rotation is None:
-                    return False
-                apply_camera_roll(context, self.camera_rotation, delta_angle)
-            else:
-                if self.rotation is None:
-                    return False
-                apply_view_roll(context, self.rotation, delta_angle)
+            apply_camera_roll(context, self.camera_rotation, delta_angle)
             return True
 
-        return False
+        if self.rotation is None:
+            return False
+        apply_view_roll(context, self.rotation, delta_angle)
+        return True
+
+    def event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> bool:
+        """Handle roll events"""
+        self.view_op.event_handler(event)
+        if not self.view_op.is_active:
+            return False
+
+        if self.initial_vector is None or self.initial_vector.length_squared <= 1e-8:
+            return False
+
+        current_vector = self._current_roll_vector(context, event)
+        if current_vector is None:
+            return False
+
+        delta_angle = self._roll_delta_angle(current_vector, event.shift)
+        return self._apply_roll_delta(context, delta_angle)

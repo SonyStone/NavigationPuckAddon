@@ -105,6 +105,84 @@ class WidgetLayout:
         self.layout_type = layout_type
         return self
 
+    def _calculate_grid_positions(
+        self,
+        origin: tuple[float, float],
+        button_size: tuple[float, float],
+    ) -> tuple[tuple[float, float], ...]:
+        x, y = origin
+        width, height = button_size
+        half_spacing = self.spacing / 2
+        return (
+            (x - width - half_spacing, y - height - half_spacing),
+            (x + half_spacing, y - height - half_spacing),
+            (x - width - half_spacing, y + half_spacing),
+            (x + half_spacing, y + half_spacing),
+        )
+
+    def _apply_grid_layout(
+        self,
+        buttons: typing.List[Button],
+        origin: tuple[float, float],
+        button_size: tuple[float, float],
+    ) -> None:
+        width, height = button_size
+        for button, position in zip(buttons, self._calculate_grid_positions(origin, button_size)):
+            button.rect.rect = (position[0], position[1], width, height)
+
+    def _apply_horizontal_layout(
+        self,
+        buttons: typing.List[Button],
+        origin: tuple[float, float],
+        button_size: tuple[float, float],
+    ) -> None:
+        x, y = origin
+        width, height = button_size
+        for index, button in enumerate(buttons):
+            button.rect.rect = (x + index * (width + self.spacing), y, width, height)
+
+    def _apply_vertical_layout(
+        self,
+        buttons: typing.List[Button],
+        origin: tuple[float, float],
+        button_size: tuple[float, float],
+    ) -> None:
+        x, y = origin
+        width, height = button_size
+        for index, button in enumerate(buttons):
+            button.rect.rect = (x, y + index * (height + self.spacing), width, height)
+
+    def _apply_circle_layout(
+        self,
+        buttons: typing.List[Button],
+        origin: tuple[float, float],
+        button_size: tuple[float, float],
+    ) -> None:
+        x, y = origin
+        width, height = button_size
+        count = len(buttons)
+        radius = max(width, height) * 1.5
+        angle_step = 2 * math.pi / count
+
+        for index, button in enumerate(buttons):
+            angle = index * angle_step
+            button.rect.rect = (
+                x + radius * math.cos(angle) - width / 2,
+                y + radius * math.sin(angle) - height / 2,
+                width,
+                height,
+            )
+
+    def _layout_handlers(
+        self,
+    ) -> dict[LayoutType, typing.Callable[[typing.List[Button], tuple[float, float], tuple[float, float]], None]]:
+        return {
+            LayoutType.GRID: self._apply_grid_layout,
+            LayoutType.HORIZONTAL: self._apply_horizontal_layout,
+            LayoutType.VERTICAL: self._apply_vertical_layout,
+            LayoutType.CIRCLE: self._apply_circle_layout,
+        }
+
     def calculate_positions(
         self,
         buttons: typing.List[Button],
@@ -112,46 +190,9 @@ class WidgetLayout:
         button_size: tuple[float, float] = (60.0, 60.0)
     ) -> None:
         """Calculate positions for buttons based on the layout type and origin"""
-        x, y = origin
-        width, height = button_size
-        spacing = self.spacing
-
-        if self.layout_type == LayoutType.GRID:
-            # Calculate a grid layout (2x2 in this case)
-            positions = [
-                (x - width - spacing/2, y - height - spacing/2),  # Bottom left
-                (x + spacing/2, y - height - spacing/2),          # Bottom right
-                (x - width - spacing/2, y + spacing/2),           # Top left
-                (x + spacing/2, y + spacing/2)                    # Top right
-            ]
-
-            for i, pos in enumerate(positions):
-                if i < len(buttons):
-                    buttons[i].rect.rect = (pos[0], pos[1], width, height)
-
-        elif self.layout_type == LayoutType.HORIZONTAL:
-            for i, button in enumerate(buttons):
-                button.rect.rect = (
-                    x + i * (width + spacing), y, width, height)
-
-        elif self.layout_type == LayoutType.VERTICAL:
-            for i, button in enumerate(buttons):
-                button.rect.rect = (
-                    x, y + i * (height + spacing), width, height)
-
-        elif self.layout_type == LayoutType.CIRCLE:
-            count = len(buttons)
-            radius = max(width, height) * 1.5
-            angle_step = 2 * math.pi / count
-
-            for i, button in enumerate(buttons):
-                angle = i * angle_step
-                button.rect.rect = (
-                    x + radius * math.cos(angle) - width/2,
-                    y + radius * math.sin(angle) - height/2,
-                    width,
-                    height
-                )
+        handler = self._layout_handlers().get(self.layout_type)
+        if handler is not None:
+            handler(buttons, origin, button_size)
 
 class EnhancedWidgetDrawer:
     """Enhanced widget drawer using ImGui system for better event handling"""
@@ -175,29 +216,44 @@ class EnhancedWidgetDrawer:
         """End drawing frame - call after drawing all widgets"""
         self.ui.end_frame()
 
+    @staticmethod
+    def _button_widget_id(button: Button, widget_id: typing.Optional[str]) -> str:
+        if widget_id is not None:
+            return widget_id
+        return f"btn_{button.label}_{id(button)}"
+
+    @staticmethod
+    def _button_rect_args(button: Button) -> tuple[tuple[float, float], tuple[float, float]]:
+        return (
+            (button.rect.x, button.rect.y),
+            (button.rect.width, button.rect.height),
+        )
+
+    def _draw_button_control(self, button: Button, widget_id: str) -> WidgetResponse:
+        pos, size = self._button_rect_args(button)
+        if button.icon:
+            return self.ui.icon_button(button.icon, pos, size, widget_id)
+        return self.ui.button(button.label, pos, size, widget_id)
+
+    @staticmethod
+    def _run_button_callback(button: Button) -> None:
+        if not button.callback:
+            return
+
+        try:
+            result = button.callback(bpy.context, button)
+            button.data['last_result'] = result
+        except (TypeError, AttributeError) as e:
+            print(f"Error executing button callback: {e}")
+
     def draw_button(self, button: Button, widget_id: typing.Optional[str] = None) -> WidgetResponse:
         """Draw a single button using ImGui system"""
-        if widget_id is None:
-            widget_id = f"btn_{button.label}_{id(button)}"
-
-        pos = (button.rect.x, button.rect.y)
-        size = (button.rect.width, button.rect.height)
-
-        if button.icon:
-            response = self.ui.icon_button(button.icon, pos, size, widget_id)
-        else:
-            response = self.ui.button(button.label, pos, size, widget_id)
-
+        widget_id = self._button_widget_id(button, widget_id)
+        response = self._draw_button_control(button, widget_id)
         self.responses[widget_id] = response
 
-        # Execute callback if button was clicked
-        if response.clicked and button.callback:
-            try:
-                result = button.callback(bpy.context, button)
-                # Store result in button data for later use
-                button.data['last_result'] = result
-            except (TypeError, AttributeError) as e:
-                print(f"Error executing button callback: {e}")
+        if response.clicked:
+            self._run_button_callback(button)
 
         return response
 
@@ -312,16 +368,22 @@ class ImGuiWidget:
 
         return responses
 
+    def _button_for_widget_id(self, widget_id: str) -> Button | None:
+        for index, button in enumerate(self.buttons):
+            if widget_id.endswith(f"{index}_{button.label}"):
+                return button
+        return None
+
     def get_clicked_buttons(self) -> typing.List[tuple[Button, WidgetResponse]]:
         """Get list of buttons that were clicked this frame"""
         clicked: typing.List[tuple[Button, WidgetResponse]] = []
         for widget_id, response in self.drawer.responses.items():
-            if response.clicked:
-                # Find the corresponding button
-                for i, button in enumerate(self.buttons):
-                    if widget_id.endswith(f"{i}_{button.label}"):
-                        clicked.append((button, response))
-                        break
+            if not response.clicked:
+                continue
+
+            button = self._button_for_widget_id(widget_id)
+            if button is not None:
+                clicked.append((button, response))
         return clicked
 
     def set_visible(self, visible: bool) -> None:

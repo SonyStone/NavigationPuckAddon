@@ -72,54 +72,68 @@ class ViewHandler:
         return ViewHandler.get_region_view3d(context).view_rotation
 
     @staticmethod
-    def get_current_roll_angle(context: bpy.types.Context) -> float:
-        """Calculate the roll angle of the current view."""
-        rv3d = ViewHandler.get_region_view3d(context)
-
-        # Get view axes in world space
+    def _view_up_and_direction(rv3d: bpy.types.RegionView3D) -> tuple[mathutils.Vector, mathutils.Vector]:
         view_matrix_inv = rv3d.view_matrix.inverted()
         view_up = view_matrix_inv.col[1].xyz.normalized()
         view_dir = -view_matrix_inv.col[2].xyz.normalized()
+        return view_up, view_dir
 
-        # Choose reference up vector (usually world Z)
+    @staticmethod
+    def _reference_up_for_direction(view_dir: mathutils.Vector) -> mathutils.Vector:
         ref_up = mathutils.Vector((0, 0, 1))
-
-        # If view is nearly aligned with Z axis, use Y as reference
         if abs(view_dir.dot(ref_up)) > 0.999:
-            ref_up = mathutils.Vector((0, 1, 0))
+            return mathutils.Vector((0, 1, 0))
+        return ref_up
 
-        # Calculate the zero-roll up vector
+    @staticmethod
+    def _project_onto_view_plane(ref_up: mathutils.Vector, view_dir: mathutils.Vector) -> mathutils.Vector:
+        return ref_up - view_dir * ref_up.dot(view_dir)
+
+    @staticmethod
+    def _zero_roll_basis(view_dir: mathutils.Vector) -> tuple[mathutils.Vector, mathutils.Vector]:
+        ref_up = ViewHandler._reference_up_for_direction(view_dir)
         zero_roll_up = ref_up - view_dir * ref_up.dot(view_dir)
 
-        # Guard against numerical instability
         if zero_roll_up.length_squared < 1e-8:
             ref_up = mathutils.Vector((1, 0, 0))
             zero_roll_up = ref_up - view_dir * ref_up.dot(view_dir)
 
         zero_roll_up.normalize()
-
-        # Zero-roll right vector
         zero_roll_right = view_dir.cross(zero_roll_up)
         zero_roll_right.normalize()
+        return zero_roll_up, zero_roll_right
 
-        # Project actual view up onto the view plane
-        view_up_proj = view_up - view_dir * view_up.dot(view_dir)
-
-        # Guard against degenerate cases
+    @staticmethod
+    def _projected_view_up(view_up: mathutils.Vector, view_dir: mathutils.Vector) -> mathutils.Vector | None:
+        view_up_proj = ViewHandler._project_onto_view_plane(view_up, view_dir)
         if view_up_proj.length_squared < 1e-8:
-            return 0.0
+            return None
 
         view_up_proj.normalize()
+        return view_up_proj
 
-        # Calculate angle between actual up and zero-roll up
+    @staticmethod
+    def _signed_roll_angle(
+        view_up_proj: mathutils.Vector,
+        zero_roll_up: mathutils.Vector,
+        zero_roll_right: mathutils.Vector,
+    ) -> float:
         dot_product = max(min(view_up_proj.dot(zero_roll_up), 1.0), -1.0)
         angle = math.acos(dot_product)
-
-        # Determine sign
         if view_up_proj.dot(zero_roll_right) > 0:
             angle = -angle
-
         return angle
+
+    @staticmethod
+    def get_current_roll_angle(context: bpy.types.Context) -> float:
+        """Calculate the roll angle of the current view."""
+        rv3d = ViewHandler.get_region_view3d(context)
+        view_up, view_dir = ViewHandler._view_up_and_direction(rv3d)
+        zero_roll_up, zero_roll_right = ViewHandler._zero_roll_basis(view_dir)
+        view_up_proj = ViewHandler._projected_view_up(view_up, view_dir)
+        if view_up_proj is None:
+            return 0.0
+        return ViewHandler._signed_roll_angle(view_up_proj, zero_roll_up, zero_roll_right)
 
 # Roll handler functions
 
@@ -144,6 +158,24 @@ def apply_camera_roll(context: bpy.types.Context, initial_rotation: mathutils.Eu
         camera.rotation_euler = new_rotation.to_euler()
 
 
+def _roll_delta_from_event(
+    context: bpy.types.Context,
+    event: bpy.types.Event,
+    initial_vector: mathutils.Vector | None,
+    initial_angle: float,
+) -> float | None:
+    if initial_vector is None or initial_vector.length_squared <= 1e-8:
+        return None
+
+    pointer_position = get_current_mouse_position(event)
+    current_vector = get_mouse_vector_to_center(context, pointer_position)
+    if current_vector.length_squared <= 1e-8:
+        return None
+
+    delta_angle = initial_vector.angle_signed(current_vector)
+    return apply_angle_snapping(delta_angle, initial_angle, event.shift)
+
+
 class ViewRollHandler:
     """Handler for rolling the view (non-camera mode)"""
 
@@ -161,17 +193,12 @@ class ViewRollHandler:
 
     def pointer_move(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
         """Update the view roll based on mouse movement."""
-        if self.initial_vector is None or self.rotation is None or self.initial_vector.length_squared <= 1e-8:
+        if self.rotation is None:
             return
 
-        pointer_position = get_current_mouse_position(event)
-        current_vector = get_mouse_vector_to_center(context, pointer_position)
-        if current_vector.length_squared <= 1e-8:
+        delta_angle = _roll_delta_from_event(context, event, self.initial_vector, self.initial_angle)
+        if delta_angle is None:
             return
-
-        delta_angle = self.initial_vector.angle_signed(current_vector)
-        delta_angle = apply_angle_snapping(
-            delta_angle, self.initial_angle, event.shift)
 
         apply_view_roll(context, self.rotation, delta_angle)
 
@@ -196,17 +223,12 @@ class CameraRollHandler:
 
     def pointer_move(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
         """Update the camera roll based on mouse movement."""
-        if self.initial_rotation is None or self.initial_vector is None or self.initial_vector.length_squared <= 1e-8:
+        if self.initial_rotation is None:
             return
 
-        pointer_position = get_current_mouse_position(event)
-        current_vector = get_mouse_vector_to_center(context, pointer_position)
-        if current_vector.length_squared <= 1e-8:
+        delta_angle = _roll_delta_from_event(context, event, self.initial_vector, self.initial_angle)
+        if delta_angle is None:
             return
-
-        delta_angle = self.initial_vector.angle_signed(current_vector)
-        delta_angle = apply_angle_snapping(
-            delta_angle, self.initial_angle, event.shift)
 
         if self.camera:
             apply_camera_roll(context, self.initial_rotation, delta_angle)
@@ -391,38 +413,93 @@ class CameraZoomHandler:
 # Orbit handler functions
 
 
+def _apply_camera_view_orbit_if_needed(
+    context: bpy.types.Context,
+    delta: mathutils.Vector,
+    shift: bool,
+    sensitivity: float,
+) -> bool:
+    if not CameraHandler.is_camera_view(context):
+        return False
+
+    if CameraHandler.is_camera_view_locked(context):
+        apply_camera_orbit(context, delta, shift, sensitivity)
+    return True
+
+
+def _apply_snapped_view_orbit(euler: mathutils.Euler, delta: mathutils.Vector, sensitivity: float) -> None:
+    snap_angle = math.radians(15.0)
+    rot_z = delta.x * sensitivity
+    rot_x = -delta.y * sensitivity
+
+    temp_euler = euler.copy()
+    temp_euler.z += rot_z
+    temp_euler.x += rot_x
+
+    euler.z = round(temp_euler.z / snap_angle) * snap_angle
+    euler.x = round(temp_euler.x / snap_angle) * snap_angle
+
+
+def _apply_free_view_orbit(euler: mathutils.Euler, delta: mathutils.Vector, sensitivity: float) -> None:
+    euler.z += delta.x * sensitivity
+    euler.x += -delta.y * sensitivity
+
+
 def apply_view_orbit(context: bpy.types.Context, delta: mathutils.Vector, shift: bool = False, sensitivity: float = 0.005) -> None:
     """Apply orbit to the view"""
-    if CameraHandler.is_camera_view(context):
-        if CameraHandler.is_camera_view_locked(context):
-            apply_camera_orbit(context, delta, shift, sensitivity)
+    if _apply_camera_view_orbit_if_needed(context, delta, shift, sensitivity):
         return
 
     rv3d = ViewHandler.get_region_view3d(context)
     euler = rv3d.view_rotation.to_euler('XYZ')
-    snap_angle = math.radians(15.0)
 
     if shift:
-        rot_z = delta.x * sensitivity
-        rot_x = -delta.y * sensitivity
-
-        temp_euler = euler.copy()
-        temp_euler.z += rot_z
-        temp_euler.x += rot_x
-
-        snapped_z = round(temp_euler.z / snap_angle) * snap_angle
-        snapped_x = round(temp_euler.x / snap_angle) * snap_angle
-
-        euler.z = snapped_z
-        euler.x = snapped_x
+        _apply_snapped_view_orbit(euler, delta, sensitivity)
     else:
-        rot_z = delta.x * sensitivity
-        rot_x = -delta.y * sensitivity
-
-        euler.z += rot_z
-        euler.x += rot_x
+        _apply_free_view_orbit(euler, delta, sensitivity)
 
     rv3d.view_rotation = euler.to_quaternion()
+
+
+def _orbit_delta_angles(delta: mathutils.Vector, shift: bool, sensitivity: float) -> tuple[float, float]:
+    snap_angle = math.radians(15.0)
+    rot_z = delta.x * sensitivity
+    rot_x = -delta.y * sensitivity
+    if shift:
+        rot_z = round(rot_z / snap_angle) * snap_angle
+        rot_x = round(rot_x / snap_angle) * snap_angle
+    return rot_z, rot_x
+
+
+def _rotated_camera_position(
+    current_location: mathutils.Vector,
+    pivot: mathutils.Vector,
+    current_rotation: mathutils.Euler,
+    rot_z: float,
+    rot_x: float,
+) -> tuple[mathutils.Vector, mathutils.Vector]:
+    camera_pos = current_location - pivot
+    rot_matrix_z = mathutils.Matrix.Rotation(rot_z, 4, 'Z')
+    camera_pos = rot_matrix_z @ camera_pos
+
+    current_matrix = current_rotation.to_matrix().to_4x4()
+    local_x = current_matrix.col[0].xyz.normalized()
+    rot_matrix_x = mathutils.Matrix.Rotation(rot_x, 4, local_x)
+    camera_pos = rot_matrix_x @ camera_pos
+    return camera_pos, local_x
+
+
+def _camera_orbit_rotation(
+    current_rotation: mathutils.Euler,
+    local_x: mathutils.Vector,
+    rot_z: float,
+    rot_x: float,
+) -> mathutils.Euler:
+    current_quat = current_rotation.to_quaternion()
+    z_rot_quat = mathutils.Quaternion((0, 0, 1), rot_z)
+    x_rot_quat = mathutils.Quaternion(local_x, rot_x)
+    new_rotation = x_rot_quat @ z_rot_quat @ current_quat
+    return new_rotation.to_euler()
 
 
 def apply_camera_orbit(context: bpy.types.Context, delta: mathutils.Vector, shift: bool = False, sensitivity: float = 0.005) -> None:
@@ -432,50 +509,12 @@ def apply_camera_orbit(context: bpy.types.Context, delta: mathutils.Vector, shif
         return
 
     pivot = context.scene.cursor.location.copy()
-    snap_angle = math.radians(15.0)
-
-    rot_z = delta.x * sensitivity
-    rot_x = -delta.y * sensitivity
-
-    # Apply snapping if shift is pressed
-    if shift:
-        rot_z = round(rot_z / snap_angle) * snap_angle
-        rot_x = round(rot_x / snap_angle) * snap_angle
-
-    # Store current camera transform
+    rot_z, rot_x = _orbit_delta_angles(delta, shift, sensitivity)
     current_location = camera.location.copy()
     current_rotation = camera.rotation_euler.copy()
-
-    # Calculate position relative to pivot
-    camera_pos = current_location - pivot
-
-    # Apply horizontal rotation around world Z
-    rot_matrix_z = mathutils.Matrix.Rotation(rot_z, 4, 'Z')
-    camera_pos = rot_matrix_z @ camera_pos
-
-    # Apply vertical rotation around the camera's current right vector
-    # Use current rotation to get the right vector, not the world-space matrix
-    current_matrix = current_rotation.to_matrix().to_4x4()
-    local_x = current_matrix.col[0].xyz.normalized()
-    rot_matrix_x = mathutils.Matrix.Rotation(rot_x, 4, local_x)
-    camera_pos = rot_matrix_x @ camera_pos
-
-    # Update camera location
+    camera_pos, local_x = _rotated_camera_position(current_location, pivot, current_rotation, rot_z, rot_x)
     camera.location = pivot + camera_pos
-
-    # Apply the same rotations to the camera's current orientation
-    # Convert current rotation to quaternion for better rotation composition
-    current_quat = current_rotation.to_quaternion()
-
-    # Apply rotations in the same order
-    z_rot_quat = mathutils.Quaternion((0, 0, 1), rot_z)
-    x_rot_quat = mathutils.Quaternion(local_x, rot_x)
-
-    # Compose rotations: apply horizontal rotation first, then vertical
-    new_rotation = x_rot_quat @ z_rot_quat @ current_quat
-
-    # Convert back to Euler and apply
-    camera.rotation_euler = new_rotation.to_euler()
+    camera.rotation_euler = _camera_orbit_rotation(current_rotation, local_x, rot_z, rot_x)
 
 
 class ViewOrbitHandler:
@@ -503,7 +542,6 @@ class ViewOrbitHandler:
 
 class CameraOrbitHandler:
     """Handler for orbiting the camera (camera view mode)"""
-
 
     def __init__(self):
         self.prev_pos: mathutils.Vector | None = None

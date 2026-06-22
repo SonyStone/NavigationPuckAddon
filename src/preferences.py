@@ -11,6 +11,13 @@ import rna_keymap_ui
 from .. import __package__ as base_package
 
 
+HOTKEY_PRESETS = (
+    ("Alt", "LEFT_ALT"),
+    ("Ctrl", "LEFT_CTRL"),
+    ("Space", "SPACE"),
+)
+
+
 class NavigationPuckSetHotkeyOperator(bpy.types.Operator):
     """Set the Navigation Puck hotkey to a preset key."""
 
@@ -182,17 +189,31 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
 
         from . import keymap
 
+        self._draw_hotkey_preset_buttons(box)
+        self._draw_hotkey_keymaps(box, wm, keymap)
+        self._draw_spacebar_warning(box, keymap)
+
+    def _draw_hotkey_preset_buttons(self, box: bpy.types.UILayout) -> None:
         preset_row = box.row(align=True)
         preset_row.label(text="Preset keys")
-        for label, key_type in (("Alt", "LEFT_ALT"), ("Ctrl", "LEFT_CTRL"), ("Space", "SPACE")):
+        for label, key_type in HOTKEY_PRESETS:
             op = preset_row.operator(NavigationPuckSetHotkeyOperator.bl_idname, text=label)
             op.key_type = key_type
 
+    def _draw_hotkey_keymaps(
+        self,
+        box: bpy.types.UILayout,
+        wm: bpy.types.WindowManager,
+        keymap: typing.Any,
+    ) -> None:
         kc = wm.keyconfigs.addon
-        if kc:
-            for km, kmi in keymap.get_hotkey_keymaps():
-                rna_keymap_ui.draw_kmi([], kc, km, kmi, box, 0) # type: ignore
+        if not kc:
+            return
 
+        for km, kmi in keymap.get_hotkey_keymaps():
+            rna_keymap_ui.draw_kmi([], kc, km, kmi, box, 0) # type: ignore
+
+    def _draw_spacebar_warning(self, box: bpy.types.UILayout, keymap: typing.Any) -> None:
         if keymap.hotkey_uses_space():
             box.label(text="Space disables Blender's default Spacebar action while this mode is active.", icon='INFO')
 

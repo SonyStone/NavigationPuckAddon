@@ -12,7 +12,7 @@ class DrawHandler:
     This is crucial for efficient script execution and avoiding memory leaks, especially in add-ons that dynamically add and remove drawing elements.
 
     Dev Warning:
-    If the draw handler was not removerd on addon reload, you might see this error:
+    If the draw handler was not removed on addon reload, you might see this error:
     ```
     ReferenceError: StructRNA of type TestWidget has been removed
     ```
@@ -95,6 +95,13 @@ class DrawHandler:
 
         return current_region_data_pointer == self.region_data_pointer
 
+    def _has_matching_viewport_rect(self, current_rects: tuple[tuple[int, int, int, int], ...]) -> bool:
+        return any(
+            self._rect_matches(current_rect, owner_rect)
+            for current_rect in current_rects
+            for owner_rect in self.viewport_rects
+        )
+
     def _viewport_matches(self) -> bool:
         region_data_match = self._region_data_matches()
         if region_data_match is not None:
@@ -107,11 +114,7 @@ class DrawHandler:
         if not current_rects:
             return True
 
-        return any(
-            self._rect_matches(current_rect, owner_rect)
-            for current_rect in current_rects
-            for owner_rect in self.viewport_rects
-        )
+        return self._has_matching_viewport_rect(current_rects)
 
     def update_context(
         self,

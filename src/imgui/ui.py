@@ -11,6 +11,9 @@ from ..renderer import Renderer
 from .ui_context import UIContext
 
 
+ICON_BUTTON_SCALE = 0.8
+
+
 def get_widget_id(widget_id: typing.Optional[str], text: typing.Optional[str], pos: tuple[float, float]) -> str:
     """Generate a unique widget ID if none provided"""
     text = text or "widget"
@@ -48,37 +51,11 @@ class UI:
         """Create a button widget"""
 
         widget_id = get_widget_id(widget_id, text, pos)
+        rect, response, state = self._button_interaction(widget_id, pos, size)
 
-        rect = Rect(pos[0], pos[1], size[0], size[1])
-        response = self.ctx.get_widget_response(widget_id, rect)
-        
-        # Choose color based on state
-        state = self.ctx.get_widget_state(widget_id, rect)
-        match state:
-            case WidgetState.ACTIVE:
-                color = self.theme.button_active
-            case WidgetState.HOVERED:
-                color = self.theme.button_hovered
-            case _:
-                color = self.theme.button_idle
-
-        border_color = (self.theme.border[0], self.theme.border[1], self.theme.border[2], self.theme.border[3] * opacity)
-        fill_color = (color[0], color[1], color[2], color[3] * opacity)
-
-        # Draw rect
-        self.renderer.add(RectOutlineCommand(rect, outline_color=border_color, fill_color=fill_color, outline_width=self.theme.border_width))
-
-        # Draw text
+        self._draw_button_background(rect, state, opacity)
         if text:
-            text_size = self.theme.get_text_size(text)
-            text_pos = (
-                rect.x + (rect.width - text_size[0]) * 0.5,
-                rect.y + (rect.height - text_size[1]) * 0.5
-            )
-            
-            text_color = (self.theme.text[0], self.theme.text[1], self.theme.text[2], self.theme.text[3] * opacity)
-
-            self.renderer.add(TextRendererCommand(text, text_pos, color=text_color))
+            self._draw_centered_text(text, rect, opacity)
 
         return response
 
@@ -92,38 +69,65 @@ class UI:
     ) -> WidgetResponse:
         """Create an icon button widget"""
         widget_id = get_widget_id(widget_id, None, pos)
+        rect, response, state = self._button_interaction(widget_id, pos, size)
 
+        self._draw_button_background(rect, state, opacity)
+        self._draw_centered_icon(icon, rect, opacity)
+
+        return response
+
+    def _button_interaction(
+        self,
+        widget_id: str,
+        pos: tuple[float, float],
+        size: tuple[float, float],
+    ) -> tuple[Rect, WidgetResponse, WidgetState]:
         rect = Rect(pos[0], pos[1], size[0], size[1])
         response = self.ctx.get_widget_response(widget_id, rect)
         state = self.ctx.get_widget_state(widget_id, rect)
+        return rect, response, state
 
-        # Choose color based on state
-        if state == WidgetState.ACTIVE:
-            color = self.theme.button_active
-        elif state == WidgetState.HOVERED:
-            color = self.theme.button_hovered
-        else:
-            color = self.theme.button_idle
+    def _draw_button_background(self, rect: Rect, state: WidgetState, opacity: float) -> None:
+        color = self._button_color(state)
+        self.renderer.add(RectOutlineCommand(
+            rect,
+            outline_color=self._with_opacity(self.theme.border, opacity),
+            fill_color=self._with_opacity(color, opacity),
+            outline_width=self.theme.border_width,
+        ))
 
-        outline_color = (
-            self.theme.border[0],
-            self.theme.border[1],
-            self.theme.border[2],
-            self.theme.border[3] * opacity,
+    def _draw_centered_text(self, text: str, rect: Rect, opacity: float) -> None:
+        text_size = self.theme.get_text_size(text)
+        text_pos = self._centered_position(rect, text_size)
+        self.renderer.add(TextRendererCommand(
+            text,
+            text_pos,
+            color=self._with_opacity(self.theme.text, opacity),
+        ))
+
+    def _draw_centered_icon(self, icon: bpy.types.Image, rect: Rect, opacity: float) -> None:
+        icon_size = (rect.width * ICON_BUTTON_SCALE, rect.height * ICON_BUTTON_SCALE)
+        self.renderer.add_image(icon, self._centered_position(rect, icon_size), icon_size, opacity=opacity)
+
+    def _button_color(self, state: WidgetState) -> tuple[float, float, float, float]:
+        match state:
+            case WidgetState.ACTIVE:
+                return self.theme.button_active
+            case WidgetState.HOVERED:
+                return self.theme.button_hovered
+            case _:
+                return self.theme.button_idle
+
+    @staticmethod
+    def _with_opacity(color: tuple[float, float, float, float], opacity: float) -> tuple[float, float, float, float]:
+        return (color[0], color[1], color[2], color[3] * opacity)
+
+    @staticmethod
+    def _centered_position(rect: Rect, size: tuple[float, float]) -> tuple[float, float]:
+        return (
+            rect.x + (rect.width - size[0]) * 0.5,
+            rect.y + (rect.height - size[1]) * 0.5,
         )
-        fill_color = (color[0], color[1], color[2], color[3] * opacity)
-
-        self.renderer.add(RectOutlineCommand(rect, outline_color=outline_color, fill_color=fill_color, outline_width=self.theme.border_width))
-
-        # Draw image icon centered in the button
-        icon_size = (size[0] * 0.8, size[1] * 0.8)  # Make icon 80% of button size
-        icon_pos = (
-            rect.x + (rect.width - icon_size[0]) * 0.5,
-            rect.y + (rect.height - icon_size[1]) * 0.5
-        )
-        self.renderer.add_image(icon, icon_pos, icon_size, opacity=opacity)
-
-        return response
 
     def panel(
         self,

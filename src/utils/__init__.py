@@ -51,16 +51,27 @@ def get_mouse_vector_to_center(context: bpy.types.Context, pointer_position: mat
         vector.normalize()
     return vector
 
+
+def _required_modal_context_members(context: bpy.types.Context) -> tuple[object | None, ...]:
+    return (
+        context.window_manager,
+        context.window,
+        context.screen,
+        context.area,
+    )
+
+
+def _has_window_region(context: bpy.types.Context) -> bool:
+    return context.region is not None and context.region.type == 'WINDOW'
+
+
+def _can_add_modal_handler(context: bpy.types.Context) -> bool:
+    return all(member is not None for member in _required_modal_context_members(context)) and _has_window_region(context)
+
+
 def add_modal_handler(context: bpy.types.Context, operator: bpy.types.Operator) -> bool:
     """Add a modal handler to the context"""
-    if (
-        context.window_manager is None
-        or context.window is None
-        or context.screen is None
-        or context.area is None
-        or context.region is None
-        or context.region.type != 'WINDOW'
-    ):
+    if not _can_add_modal_handler(context):
         return False
 
     try:
