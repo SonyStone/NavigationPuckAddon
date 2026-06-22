@@ -6,7 +6,7 @@ import dataclasses
 
 from .draw_protocol import DrawProtocol, UnwrapProtocol
 from .flat_color_shader_command import FlatColorShaderCommand
-from .buildin_vertices import RectangleVertices, OutlineVertices, RectangleIndices, OutlineIndices
+from .builtin_vertices import RectangleVertices, OutlineVertices, RectangleIndices, OutlineIndices
 
 @dataclasses.dataclass
 class RectOutlineCommand(DrawProtocol, UnwrapProtocol):

@@ -9,6 +9,11 @@ import bpy
 import rna_keymap_ui
 
 from .. import __package__ as base_package
+from .activation import (
+    ACTIVATION_DIRECT_MENU,
+    ACTIVATION_HOTKEY_MENU,
+    ACTIVATION_SHORTCUT_BUTTON,
+)
 
 
 HOTKEY_PRESETS = (
@@ -38,10 +43,10 @@ class NavigationPuckSetHotkeyOperator(bpy.types.Operator):
 def _refresh_activation_mode(self: typing.Any, context: bpy.types.Context) -> None:
     try:
         from . import keymap
-        from .panels import navigation_puck_widget
+        from .panels import activation_runtime
 
         keymap.refresh_keymaps()
-        navigation_puck_widget.refresh_activation_runtime(context)
+        activation_runtime.refresh_activation_runtime(context, allow_blender_development=True)
     except Exception as ex:
         print(f"Navigation Puck failed to refresh activation mode: {ex}")
 
@@ -55,11 +60,11 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
         name="Activation mode",
         description="Choose how the Navigation Puck Menu opens",
         items=(
-            ('SHORTCUT_BUTTON', "Shortcut Button", "Show a small shortcut button near the cursor"),
-            ('DIRECT_MENU', "Menu Near Cursor", "Show the Navigation Puck Menu near the cursor"),
-            ('HOTKEY_MENU', "Hotkey", "Open the Navigation Puck Menu from a keyboard shortcut"),
+            (ACTIVATION_SHORTCUT_BUTTON, "Shortcut Button", "Show a small shortcut button near the cursor"),
+            (ACTIVATION_DIRECT_MENU, "Menu Near Cursor", "Show the Navigation Puck Menu near the cursor"),
+            (ACTIVATION_HOTKEY_MENU, "Hotkey", "Open the Navigation Puck Menu from a keyboard shortcut"),
         ),
-        default='SHORTCUT_BUTTON',
+        default=ACTIVATION_SHORTCUT_BUTTON,
         update=_refresh_activation_mode,
     )
     debug_shortcut_bounds: bpy.props.BoolProperty( # type: ignore
@@ -151,13 +156,12 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
         layout = self.layout
         layout.prop(self, "activation_mode")
 
-        match self.activation_mode:
-            case 'DIRECT_MENU':
-                self._draw_direct_menu_settings(layout)
-            case 'HOTKEY_MENU':
-                self._draw_hotkey_settings(context, layout)
-            case _:
-                self._draw_shortcut_button_settings(layout)
+        if self.activation_mode == ACTIVATION_DIRECT_MENU:
+            self._draw_direct_menu_settings(layout)
+        elif self.activation_mode == ACTIVATION_HOTKEY_MENU:
+            self._draw_hotkey_settings(context, layout)
+        else:
+            self._draw_shortcut_button_settings(layout)
 
     def _draw_shortcut_button_settings(self, layout: bpy.types.UILayout) -> None:
         box = layout.box()

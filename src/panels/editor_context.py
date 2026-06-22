@@ -542,11 +542,6 @@ def event_window_position_is_in_context_area(
     return _window_region_at_position(context.area, window_position) is not None
 
 
-def local_viewport_position(context: bpy.types.Context, position: mathutils.Vector) -> mathutils.Vector:
-    x, y, _width, _height = viewport_local_rect_for_position(context, position)
-    return mathutils.Vector((position.x - x, position.y - y))
-
-
 class RegionLocalEvent:
     """Event proxy with mouse_region coordinates localized to the selected viewport."""
 

@@ -5,7 +5,7 @@ import typing
 import dataclasses
 import bpy
 
-from .buildin_vertices import RectangleVertices
+from .builtin_vertices import RectangleVertices
 from .draw_protocol import DrawProtocol, UnwrapProtocol
 from .image_shader_command import ImageShaderCommand
 

@@ -33,12 +33,3 @@ class Rect(tuple[float, float, float, float]):
         """Get center point of rectangle"""
         return (self.x + self.width * 0.5, self.y + self.height * 0.5)
 
-    def expand(self, amount: float) -> 'Rect':
-        """Return expanded rectangle"""
-        return Rect(
-            self.x - amount,
-            self.y - amount,
-            self.width + amount * 2,
-            self.height + amount * 2
-        )
-

@@ -1,6 +1,4 @@
-"""
-Creates a command to draw a rectangle outline using four rectangles.
-"""
+"""Built-in rectangle and outline geometry data."""
 
 
 class OutlineVertices(list[

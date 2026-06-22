@@ -12,11 +12,8 @@ class DrawHandler:
     This is crucial for efficient script execution and avoiding memory leaks, especially in add-ons that dynamically add and remove drawing elements.
 
     Dev Warning:
-    If the draw handler was not removed on addon reload, you might see this error:
-    ```
-    ReferenceError: StructRNA of type TestWidget has been removed
-    ```
-    For example, if you start the operator, then reload the addon without stopping the operator first.
+    Always remove draw handlers during unregister; stale callbacks can hold
+    removed operator instances after add-on reload.
     """
     
     def __init__(self):

@@ -2,9 +2,10 @@ import typing
 import bpy
 import mathutils
 
-from . import InputEventAdapter, Theme, WidgetResponse, WidgetState
 from .double_click_tracker import DoubleClickTracker
+from .input_adapter import InputEventAdapter
 from .rect import Rect
+from .types import Theme, WidgetResponse, WidgetState
 
 from .input_event import EventType, PointerEvent, PointerButton
 
@@ -20,7 +21,6 @@ class UIContext:
         self._init_input_state()
         self._init_widget_state()
         self._init_click_state()
-        self._init_layout_state()
 
         self.frame_count = 0
         self.pending_events: typing.List[PointerEvent] = []
@@ -33,17 +33,11 @@ class UIContext:
     def _init_widget_state(self) -> None:
         self.hovered_id: typing.Optional[str] = None
         self.active_id: typing.Optional[str] = None
-        self.focused_id: typing.Optional[str] = None
 
     def _init_click_state(self) -> None:
         self.click_start_pos = (0.0, 0.0)
         self.click_time = 0.0
         self.double_click_tracker = DoubleClickTracker()
-
-    def _init_layout_state(self) -> None:
-        self.next_widget_pos = (0.0, 0.0)
-        self.layout_direction = mathutils.Vector((1.0, 0.0))  # Horizontal by default
-        self.auto_layout = True
 
     def begin_frame(self, mouse_pos: mathutils.Vector | tuple[float, float]):
         """Begin new frame - call this before drawing widgets"""
@@ -76,7 +70,6 @@ class UIContext:
         """Reset UI state - call this when context changes"""
         self.hovered_id = None
         self.active_id = None
-        self.focused_id = None
         self.pending_events.clear()
 
     def handle_event(self, blender_event: bpy.types.Event) -> bool:

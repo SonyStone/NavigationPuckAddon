@@ -2,7 +2,7 @@ import typing
 import bpy
 import mathutils
 
-from ..utils import get_current_mouse_position, get_mouse_vector_to_center
+from ..utils.view_math import event_drag_delta, get_current_mouse_position, get_mouse_vector_to_center
 from .view_handlers import (
     CameraHandler,
     ViewHandler,
@@ -63,15 +63,15 @@ class ViewOperationHandler:
             mouse_pos = mathutils.Vector((0, 0))
         self.start_mouse_pos[:] = mouse_pos
 
-    def event_handler(self, event: bpy.types.Event) -> bool | typing.Literal["DO_SOMETHING"]:
-        """Handle operation events"""
-        if self.is_active:
-            if event.type == 'MOUSEMOVE':
-                self.is_active = True
-            if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
-                self.is_active = False
-            return True
-        return False
+    def update_from_event(self, event: bpy.types.Event) -> bool:
+        """Update active state and return whether the operation should keep handling input."""
+        if not self.is_active:
+            return False
+
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            self.is_active = False
+
+        return self.is_active
 
 
 class ViewPan:
@@ -88,14 +88,11 @@ class ViewPan:
     def event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> bool:
         """Handle pan events"""
 
-        self.view_op.event_handler(event)
+        if not self.view_op.update_from_event(event):
+            return False
 
-        if self.view_op.is_active:
-            apply_view_pan(context, mathutils.Vector(
-                (event.mouse_prev_x - event.mouse_x, event.mouse_prev_y - event.mouse_y)))
-            return True
-
-        return False
+        apply_view_pan(context, event_drag_delta(event))
+        return True
 
 
 class ViewOrbit:
@@ -112,14 +109,11 @@ class ViewOrbit:
     def event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> bool:
         """Handle orbit events"""
 
-        self.view_op.event_handler(event)
+        if not self.view_op.update_from_event(event):
+            return False
 
-        if self.view_op.is_active:
-            apply_view_orbit(context, mathutils.Vector(
-                (event.mouse_prev_x - event.mouse_x, event.mouse_prev_y - event.mouse_y)), shift=event.shift)
-            return True
-
-        return False
+        apply_view_orbit(context, event_drag_delta(event), shift=event.shift)
+        return True
 
 
 class ViewZoom:
@@ -137,14 +131,12 @@ class ViewZoom:
     def event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> bool:
         """Handle zoom events"""
 
-        self.view_op.event_handler(event)
+        if not self.view_op.update_from_event(event):
+            return False
 
-        if self.view_op.is_active:
-            zoom_delta = (event.mouse_prev_y - event.mouse_y) * 0.02
-            apply_view_zoom(context, zoom_delta)
-            return True
-
-        return False
+        zoom_delta = event_drag_delta(event).y * 0.02
+        apply_view_zoom(context, zoom_delta)
+        return True
 
 
 class View2DPan:
@@ -162,13 +154,11 @@ class View2DPan:
 
     def event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> bool:
         """Handle 2D pan events."""
-        self.view_op.event_handler(event)
+        if not self.view_op.update_from_event(event):
+            return False
 
-        if self.view_op.is_active:
-            self._apply_pan(context, mathutils.Vector((event.mouse_prev_x - event.mouse_x, event.mouse_prev_y - event.mouse_y)))
-            return True
-
-        return False
+        self._apply_pan(context, event_drag_delta(event))
+        return True
 
     def _apply_pan(self, context: bpy.types.Context, delta: mathutils.Vector) -> None:
         try:
@@ -201,13 +191,11 @@ class View2DZoom:
 
     def event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> bool:
         """Handle 2D zoom events."""
-        self.view_op.event_handler(event)
+        if not self.view_op.update_from_event(event):
+            return False
 
-        if self.view_op.is_active:
-            self._apply_zoom(context, mathutils.Vector((event.mouse_prev_x - event.mouse_x, event.mouse_prev_y - event.mouse_y)))
-            return True
-
-        return False
+        self._apply_zoom(context, event_drag_delta(event))
+        return True
 
     def _image_zoom_factor(self, delta_y: float) -> float:
         return 1.0 + min(
@@ -307,8 +295,7 @@ class ViewRoll:
 
     def event_handler(self, context: bpy.types.Context, event: bpy.types.Event) -> bool:
         """Handle roll events"""
-        self.view_op.event_handler(event)
-        if not self.view_op.is_active:
+        if not self.view_op.update_from_event(event):
             return False
 
         if self.initial_vector is None or self.initial_vector.length_squared <= 1e-8:
@@ -320,3 +307,78 @@ class ViewRoll:
 
         delta_angle = self._roll_delta_angle(current_vector, event.shift)
         return self._apply_roll_delta(context, delta_angle)
+
+
+class ViewOperationSet:
+    """Owns the 3D and 2D view operation handlers for a puck instance."""
+
+    def __init__(self) -> None:
+        self.view_pan = ViewPan()
+        self.view_orbit = ViewOrbit()
+        self.view_zoom = ViewZoom()
+        self.view_roll = ViewRoll()
+        self.view2d_pan = View2DPan()
+        self.view2d_zoom = View2DZoom()
+
+    def handlers(self, is_view2d_editor: bool) -> tuple[typing.Any, ...]:
+        if is_view2d_editor:
+            return (self.view2d_pan, self.view2d_zoom)
+        return self.view_3d_handlers()
+
+    def view_3d_handlers(self) -> tuple[typing.Any, ...]:
+        return (self.view_pan, self.view_orbit, self.view_zoom, self.view_roll)
+
+    def pan(self, is_view2d_editor: bool) -> typing.Any:
+        return self.view2d_pan if is_view2d_editor else self.view_pan
+
+    def zoom(self, is_view2d_editor: bool) -> typing.Any:
+        return self.view2d_zoom if is_view2d_editor else self.view_zoom
+
+    def action_handler(self, action: str, is_view2d_editor: bool) -> typing.Any | None:
+        if action == "pan":
+            return self.pan(is_view2d_editor)
+        if action == "orbit":
+            return self.view_orbit
+        if action == "zoom":
+            return self.zoom(is_view2d_editor)
+        if action == "roll":
+            return self.view_roll
+        return None
+
+    def action_start_mouse_pos(self, action: str, is_view2d_editor: bool) -> mathutils.Vector | None:
+        handler = self.action_handler(action, is_view2d_editor)
+        if handler is None:
+            return None
+        return handler.view_op.start_mouse_pos
+
+    def apply_action(
+        self,
+        context: bpy.types.Context,
+        action: str,
+        delta: mathutils.Vector,
+        pointer_position: mathutils.Vector,
+        pointer_offset: mathutils.Vector,
+        is_view2d_editor: bool,
+        *,
+        shift: bool = False,
+    ) -> bool:
+        if action == "roll":
+            self.view_roll.apply(context, pointer_position, pointer_offset)
+            return True
+
+        handler = self.action_handler(action, is_view2d_editor)
+        if handler is None:
+            return False
+
+        if action == "orbit":
+            handler.apply(context, delta, pointer_offset, shift)
+        else:
+            handler.apply(context, delta, pointer_offset)
+        return True
+
+    def any_active(self, is_view2d_editor: bool) -> bool:
+        return any(handler.view_op.is_active for handler in self.handlers(is_view2d_editor))
+
+    def cancel(self, is_view2d_editor: bool) -> None:
+        for handler in self.handlers(is_view2d_editor):
+            handler.view_op.is_active = False

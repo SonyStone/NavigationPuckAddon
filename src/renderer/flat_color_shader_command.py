@@ -6,7 +6,7 @@ import dataclasses
 import gpu
 from gpu_extras.batch import batch_for_shader
 
-from .buildin_vertices import RectangleIndices, RectangleVertices
+from .builtin_vertices import RectangleIndices, RectangleVertices
 from .draw_protocol import DrawProtocol
 
 

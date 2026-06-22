@@ -5,12 +5,12 @@ This module handles hotkey settings and registration for the addon.
 
 import bpy
 
-from .panels import navigation_puck_widget
+from .activation import ACTIVATION_HOTKEY_MENU, MODIFIER_KEY_STATE_ATTRS
 
 
 addon_keymaps: list[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]] = []
 DEFAULT_HOTKEY = 'LEFT_ALT'
-HOTKEY_OPERATOR_ID = navigation_puck_widget.NavigationPuckHotkeyOperator.bl_idname
+HOTKEY_OPERATOR_ID = "navigation_puck.hotkey"
 HOTKEY_KEYMAP_NAME = "Window"
 HOTKEY_PRESS_VALUE = 'PRESS'
 NO_KEY_MODIFIER = 'NONE'
@@ -33,7 +33,7 @@ def _get_addon_preferences():
 
 def _hotkey_mode_enabled() -> bool:
     prefs = _get_addon_preferences()
-    return getattr(prefs, "activation_mode", 'SHORTCUT_BUTTON') == 'HOTKEY_MENU'
+    return getattr(prefs, "activation_mode", 'SHORTCUT_BUTTON') == ACTIVATION_HOTKEY_MENU
 
 
 def _ensure_hotkey_keymap() -> None:
@@ -174,7 +174,7 @@ def held_modifier_hotkey_type(event: bpy.types.Event) -> str:
     if kmi is None:
         return ""
 
-    modifier_attr = navigation_puck_widget.MODIFIER_KEY_STATE_ATTRS.get(kmi.type)
+    modifier_attr = MODIFIER_KEY_STATE_ATTRS.get(kmi.type)
     if modifier_attr is None:
         return ""
 
@@ -182,11 +182,6 @@ def held_modifier_hotkey_type(event: bpy.types.Event) -> str:
         return ""
 
     return kmi.type if bool(getattr(event, modifier_attr, False)) else ""
-
-
-def event_holds_modifier_hotkey(event: bpy.types.Event) -> bool:
-    """Return True while the configured hotkey is a modifier key currently held."""
-    return bool(held_modifier_hotkey_type(event))
 
 
 def register_keymaps():
