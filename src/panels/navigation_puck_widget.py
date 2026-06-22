@@ -309,6 +309,103 @@ def event_area_position(
     return position
 
 
+def event_window_position(event: bpy.types.Event) -> mathutils.Vector | None:
+    x = getattr(event, "mouse_x", None)
+    y = getattr(event, "mouse_y", None)
+    if x is None or y is None:
+        return None
+    return mathutils.Vector((x, y))
+
+
+def event_position_in_context(
+    context: bpy.types.Context,
+    event: bpy.types.Event,
+    fallback: mathutils.Vector,
+) -> mathutils.Vector:
+    window_position = event_window_position(event)
+    if window_position is None or context.region is None:
+        return event_area_position(context, event, fallback)
+
+    if _quad_view_entries(context) and context.area is not None:
+        return mathutils.Vector((
+            window_position.x - int(context.area.x),
+            window_position.y - int(context.area.y),
+        ))
+
+    return mathutils.Vector((
+        window_position.x - int(context.region.x),
+        window_position.y - int(context.region.y),
+    ))
+
+
+def _region_contains_window_position(region: bpy.types.Region, position: mathutils.Vector) -> bool:
+    return (
+        int(region.x) <= position.x < int(region.x) + int(region.width)
+        and int(region.y) <= position.y < int(region.y) + int(region.height)
+    )
+
+
+def editor_context_override_at_event(
+    context: bpy.types.Context,
+    event: bpy.types.Event,
+) -> dict[str, typing.Any] | None:
+    window_position = event_window_position(event)
+    if window_position is None or context.window is None:
+        return None
+
+    screen = context.screen or getattr(context.window, "screen", None)
+    if screen is None:
+        return None
+
+    for area in screen.areas:
+        try:
+            if area.type not in SUPPORTED_EDITOR_TYPES:
+                continue
+
+            space = area.spaces.active
+            if space is None or space.type not in SUPPORTED_EDITOR_TYPES:
+                continue
+
+            for region in area.regions:
+                if region.type != 'WINDOW' or not _region_contains_window_position(region, window_position):
+                    continue
+
+                override: dict[str, typing.Any] = {
+                    "window": context.window,
+                    "screen": screen,
+                    "area": area,
+                    "region": region,
+                    "space_data": space,
+                }
+                if area.type == 'VIEW_3D':
+                    region_data = getattr(space, "region_3d", None)
+                    if region_data is not None:
+                        override["region_data"] = region_data
+                return override
+        except (ReferenceError, RuntimeError, TypeError):
+            continue
+
+    return None
+
+
+def event_window_position_is_in_context_area(
+    context: bpy.types.Context,
+    event: bpy.types.Event,
+) -> bool:
+    window_position = event_window_position(event)
+    if window_position is None:
+        return True
+
+    if context.area is None:
+        return False
+
+    for region in context.area.regions:
+        if region.type == 'WINDOW' and _region_contains_window_position(region, window_position):
+            return True
+
+    return False
+
+
 def local_viewport_position(context: bpy.types.Context, position: mathutils.Vector) -> mathutils.Vector:
     x, y, _width, _height = viewport_local_rect_for_position(context, position)
     return mathutils.Vector((position.x - x, position.y - y))
@@ -513,7 +610,10 @@ class NavigationPuckWidget:
         self.drag_select = drag_select
         self.dismiss_on_key_release = dismiss_on_key_release
         self.dismiss_key_type = dismiss_key_type
-        raw_event_position = event_region_position(event, self.mouse_pos)
+        if anchor is not None and dismiss_on_key_release:
+            raw_event_position = anchor.copy()
+        else:
+            raw_event_position = event_region_position(event, self.mouse_pos)
         owner_position = anchor or raw_event_position
         self._set_owner_context(context, owner_position)
 
@@ -548,7 +648,10 @@ class NavigationPuckWidget:
         self.drag_select = drag_select
         self.dismiss_on_key_release = dismiss_on_key_release
         self.dismiss_key_type = dismiss_key_type
-        raw_event_position = event_region_position(event, self.mouse_pos)
+        if anchor is not None and dismiss_on_key_release:
+            raw_event_position = anchor.copy()
+        else:
+            raw_event_position = event_region_position(event, self.mouse_pos)
         owner_position = anchor or raw_event_position
         self._set_owner_context(context, owner_position)
         self.draw_handler.remove()
@@ -1220,15 +1323,17 @@ class NavigationPuckShortcut:
         if self._menu_is_running():
             return OperatorReturn.PASS_THROUGH
 
+        if not event_window_position_is_in_context_area(context, event):
+            return OperatorReturn.PASS_THROUGH
+
         dismiss_key_type = keymap.held_modifier_hotkey_type(event)
         if not dismiss_key_type:
             return OperatorReturn.PASS_THROUGH
 
-        if hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y"):
-            raw_mouse_pos = event_area_position(context, event, self._owner_region_position(self.mouse_pos))
-            self._sync_owner_viewport(context, raw_mouse_pos)
-            self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
-            self._update_draw_context(context)
+        raw_mouse_pos = event_position_in_context(context, event, self._owner_region_position(self.mouse_pos))
+        self._sync_owner_viewport(context, raw_mouse_pos)
+        self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
+        self._update_draw_context(context)
         self.button_center[:] = self.mouse_pos
         self._clamp_button_center()
         self._open_puck_menu(context, drag_select=False, dismiss_key_type=dismiss_key_type)
@@ -1755,14 +1860,18 @@ class NavigationPuckHotkeyOperator(bpy.types.Operator):
     bl_label = "Navigation Puck Hotkey"
     bl_options = {'INTERNAL'}
 
-    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
+    def _invoke_in_editor_context(
+        self,
+        context: bpy.types.Context,
+        event: bpy.types.Event,
+    ) -> OperatorReturnType:
         if not is_supported_editor_context(context):
             return OperatorReturn.CANCELLED
 
         if event.type in MODIFIER_KEY_STATE_ATTRS and any(app.is_running for app in NavigationPuckShortcutOperator.apps.values()):
             return OperatorReturn.PASS_THROUGH
 
-        anchor = event_area_position(context, event, mathutils.Vector((-1.0, -1.0)))
+        anchor = event_position_in_context(context, event, mathutils.Vector((-1.0, -1.0)))
         context_override = make_context_override(context, anchor)
         try:
             if context_override:
@@ -1797,6 +1906,17 @@ class NavigationPuckHotkeyOperator(bpy.types.Operator):
             return OperatorReturn.PASS_THROUGH
 
         return OperatorReturn.FINISHED
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
+        target_override = editor_context_override_at_event(context, event)
+        if target_override:
+            try:
+                with context.temp_override(**target_override):
+                    return self._invoke_in_editor_context(bpy.context, event)
+            except (ReferenceError, RuntimeError, TypeError) as ex:
+                print(f"Navigation Puck hotkey failed to use cursor editor context: {ex}")
+
+        return self._invoke_in_editor_context(context, event)
 
 
 class NavigationPuckShortcutOperator(bpy.types.Operator):
