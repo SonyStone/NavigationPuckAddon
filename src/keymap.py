@@ -5,7 +5,7 @@ This module handles hotkey settings and registration for the addon.
 
 import bpy
 
-from .activation import ACTIVATION_HOTKEY_MENU, MODIFIER_KEY_STATE_ATTRS
+from .activation import ACTIVATION_HOTKEY_MENU, DEFAULT_ACTIVATION_MODE, MODIFIER_KEY_STATE_ATTRS
 
 
 addon_keymaps: list[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]] = []
@@ -33,7 +33,7 @@ def _get_addon_preferences():
 
 def _hotkey_mode_enabled() -> bool:
     prefs = _get_addon_preferences()
-    return getattr(prefs, "activation_mode", 'SHORTCUT_BUTTON') == ACTIVATION_HOTKEY_MENU
+    return getattr(prefs, "activation_mode", DEFAULT_ACTIVATION_MODE) == ACTIVATION_HOTKEY_MENU
 
 
 def _ensure_hotkey_keymap() -> None:

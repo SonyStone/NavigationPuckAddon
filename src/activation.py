@@ -7,6 +7,7 @@ import bpy
 ACTIVATION_SHORTCUT_BUTTON = 'SHORTCUT_BUTTON'
 ACTIVATION_DIRECT_MENU = 'DIRECT_MENU'
 ACTIVATION_HOTKEY_MENU = 'HOTKEY_MENU'
+DEFAULT_ACTIVATION_MODE = ACTIVATION_HOTKEY_MENU
 
 OVERLAY_ACTIVATION_MODES = {ACTIVATION_SHORTCUT_BUTTON, ACTIVATION_DIRECT_MENU, ACTIVATION_HOTKEY_MENU}
 
@@ -32,7 +33,7 @@ def get_addon_preferences(context: bpy.types.Context) -> typing.Any | None:
 
 def get_activation_mode(context: bpy.types.Context) -> str:
     prefs = get_addon_preferences(context)
-    return str(getattr(prefs, "activation_mode", ACTIVATION_SHORTCUT_BUTTON))
+    return str(getattr(prefs, "activation_mode", DEFAULT_ACTIVATION_MODE))
 
 
 def uses_overlay_activation(context: bpy.types.Context) -> bool:

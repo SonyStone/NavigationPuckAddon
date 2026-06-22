@@ -13,6 +13,7 @@ from .activation import (
     ACTIVATION_DIRECT_MENU,
     ACTIVATION_HOTKEY_MENU,
     ACTIVATION_SHORTCUT_BUTTON,
+    DEFAULT_ACTIVATION_MODE,
 )
 
 
@@ -64,7 +65,7 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
             (ACTIVATION_DIRECT_MENU, "Menu Near Cursor", "Show the Navigation Puck Menu near the cursor"),
             (ACTIVATION_HOTKEY_MENU, "Hotkey", "Open the Navigation Puck Menu from a keyboard shortcut"),
         ),
-        default=ACTIVATION_SHORTCUT_BUTTON,
+        default=DEFAULT_ACTIVATION_MODE,
         update=_refresh_activation_mode,
     )
     debug_shortcut_bounds: bpy.props.BoolProperty( # type: ignore

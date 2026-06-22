@@ -11,6 +11,7 @@ from ..activation import (
     ACTIVATION_DIRECT_MENU,
     ACTIVATION_HOTKEY_MENU,
     ACTIVATION_SHORTCUT_BUTTON,
+    DEFAULT_ACTIVATION_MODE,
     get_activation_mode,
     get_addon_preferences,
     get_mode_menu_button_size,
@@ -77,7 +78,7 @@ class NavigationPuckShortcut:
         self.margin = 14.0
         self.cursor_distance = 80.0
         self.cursor_position = 'BOTTOM_LEFT'
-        self.activation_mode = ACTIVATION_SHORTCUT_BUTTON
+        self.activation_mode = DEFAULT_ACTIVATION_MODE
         self.cursor_offset = cursor_offset(self.cursor_position, self.cursor_distance)
         self.follow_zone_radius = follow_zone_radius(
             self.cursor_offset,

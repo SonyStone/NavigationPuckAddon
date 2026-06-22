@@ -4,3 +4,6 @@
 # agents
 /.agents
 skills-lock.json
+
+# builds
+*.zip
