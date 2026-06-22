@@ -27,6 +27,7 @@ class ShortcutPlacement:
             shortcut.activation_mode,
             shortcut.button_size,
             shortcut.menu_button_size,
+            shortcut.menu_gap,
         )
 
     def update_button_position(self) -> None:
@@ -55,6 +56,7 @@ class ShortcutPlacement:
                 shortcut.menu_button_size,
                 shortcut.mouse_pos,
                 shortcut._supports_action,
+                shortcut.menu_gap,
             ),
             distance_to_button,
             full_visible_radius(shortcut.activation_mode, shortcut.button_size, shortcut.menu_button_size),

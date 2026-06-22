@@ -59,10 +59,11 @@ def direct_menu_contains(
     x: float,
     y: float,
     supports_action: typing.Callable[[str], bool],
+    offset: float = 5.0,
 ) -> bool:
     return any(
         supports_action(action) and rect.contains(x, y)
-        for action, rect in direct_menu_rects(center, size).items()
+        for action, rect in direct_menu_rects(center, size, offset).items()
     )
 
 
@@ -130,6 +131,7 @@ def visible_control_contains(
     menu_button_size: float,
     mouse_pos: mathutils.Vector,
     supports_action: typing.Callable[[str], bool],
+    menu_gap: float = 5.0,
 ) -> bool:
     if activation_mode == ACTIVATION_DIRECT_MENU:
         return direct_menu_contains(
@@ -138,6 +140,7 @@ def visible_control_contains(
             mouse_pos.x,
             mouse_pos.y,
             supports_action,
+            menu_gap,
         )
     return button_rect(button_center, button_size).contains(mouse_pos.x, mouse_pos.y)
 
@@ -159,9 +162,14 @@ def fade_proximity(
     return 1.0 - ((distance_to_button - full_visible_radius) / fade_span)
 
 
-def shortcut_control_half_size(activation_mode: str, button_size: float, menu_button_size: float) -> float:
+def shortcut_control_half_size(
+    activation_mode: str,
+    button_size: float,
+    menu_button_size: float,
+    menu_gap: float = 5.0,
+) -> float:
     if activation_mode == ACTIVATION_DIRECT_MENU:
-        return menu_button_size + 6.0
+        return menu_button_size + menu_gap + 1.0
     return button_size * 0.5
 
 
@@ -172,12 +180,13 @@ def clamp_shortcut_center(
     activation_mode: str,
     button_size: float,
     menu_button_size: float,
+    menu_gap: float = 5.0,
 ) -> mathutils.Vector:
     return clamp_center(
         center,
         region_size,
         margin,
-        shortcut_control_half_size(activation_mode, button_size, menu_button_size),
+        shortcut_control_half_size(activation_mode, button_size, menu_button_size, menu_gap),
     )
 
 

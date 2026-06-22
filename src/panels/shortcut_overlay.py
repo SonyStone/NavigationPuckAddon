@@ -7,6 +7,7 @@ from ..imgui.ui import UI
 from ..operators.view_operations import ViewOperationSet
 from ..utils.draw_handler import DrawHandler, force_redraw
 from ..utils.operator_return import OperatorReturn, OperatorReturnType
+from ..utils.scale import interface_scale
 from ..activation import (
     ACTIVATION_DIRECT_MENU,
     ACTIVATION_HOTKEY_MENU,
@@ -36,6 +37,14 @@ from .shortcut_button import ShortcutButton
 from .shortcut_direct_menu import ShortcutDirectMenu
 from .shortcut_hotkey import ShortcutHotkey
 from .shortcut_placement import ShortcutPlacement
+
+
+DEFAULT_SHORTCUT_BUTTON_SIZE = 45.0
+DEFAULT_MENU_BUTTON_SIZE = 55.0
+DEFAULT_SHORTCUT_MARGIN = 14.0
+DEFAULT_MENU_GAP = 5.0
+DEFAULT_SHORTCUT_CURSOR_DISTANCE = 80.0
+DEFAULT_FADE_ZONE_MIN_INSET = 10.0
 
 
 class NavigationPuckShortcut:
@@ -73,10 +82,11 @@ class NavigationPuckShortcut:
         self.editor_state = EditorState()
 
     def _init_preference_defaults(self) -> None:
-        self.button_size = 45.0
-        self.menu_button_size = 55.0
-        self.margin = 14.0
-        self.cursor_distance = 80.0
+        self.button_size = DEFAULT_SHORTCUT_BUTTON_SIZE
+        self.menu_button_size = DEFAULT_MENU_BUTTON_SIZE
+        self.margin = DEFAULT_SHORTCUT_MARGIN
+        self.menu_gap = DEFAULT_MENU_GAP
+        self.cursor_distance = DEFAULT_SHORTCUT_CURSOR_DISTANCE
         self.cursor_position = 'BOTTOM_LEFT'
         self.activation_mode = DEFAULT_ACTIVATION_MODE
         self.cursor_offset = cursor_offset(self.cursor_position, self.cursor_distance)
@@ -86,7 +96,7 @@ class NavigationPuckShortcut:
         )
         self.idle_opacity = 0.0
         self.click_opacity_threshold = 0.12
-        self.fade_zone_min_inset = 10.0
+        self.fade_zone_min_inset = DEFAULT_FADE_ZONE_MIN_INSET
         self.fade_zone_inset_percent = 40.0
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
@@ -406,17 +416,27 @@ class NavigationPuckShortcut:
 
     def _sync_preferences(self, context: bpy.types.Context) -> None:
         prefs = get_addon_preferences(context)
+        scale = interface_scale(context)
         self.activation_mode = get_activation_mode(context)
         if self.activation_mode == ACTIVATION_SHORTCUT_BUTTON:
             self._ensure_shortcut_icon()
-        self.button_size = max(float(getattr(prefs, "shortcut_button_size", self.button_size)), 1.0)
-        self.menu_button_size = get_mode_menu_button_size(prefs, self.activation_mode, self.menu_button_size)
+        self.button_size = max(
+            float(getattr(prefs, "shortcut_button_size", DEFAULT_SHORTCUT_BUTTON_SIZE)) * scale,
+            1.0,
+        )
+        self.menu_button_size = max(
+            get_mode_menu_button_size(prefs, self.activation_mode, DEFAULT_MENU_BUTTON_SIZE) * scale,
+            1.0,
+        )
+        self.margin = max(DEFAULT_SHORTCUT_MARGIN * scale, 0.0)
+        self.menu_gap = max(DEFAULT_MENU_GAP * scale, 0.0)
+        self.fade_zone_min_inset = max(DEFAULT_FADE_ZONE_MIN_INSET * scale, 0.0)
         self.fade_zone_inset_percent = max(
             float(getattr(prefs, "shortcut_fade_start_inset_percent", self.fade_zone_inset_percent)),
             0.0,
         )
-        distance = getattr(prefs, "shortcut_cursor_distance", self.cursor_distance)
-        self.cursor_distance = max(float(distance), self.button_size * 0.5)
+        distance = getattr(prefs, "shortcut_cursor_distance", DEFAULT_SHORTCUT_CURSOR_DISTANCE)
+        self.cursor_distance = max(float(distance) * scale, self.button_size * 0.5)
         self.cursor_position = str(getattr(prefs, "shortcut_cursor_position", self.cursor_position))
         self.cursor_offset[:] = cursor_offset(self.cursor_position, self.cursor_distance)
         self.follow_zone_radius = follow_zone_radius(

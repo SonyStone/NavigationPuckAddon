@@ -15,19 +15,6 @@ from .view_handlers import (
 )
 
 
-def ui_pixel_scale(context: bpy.types.Context) -> float:
-    """Return the UI-to-framebuffer pixel scale used by View2D operators."""
-    system_preferences = getattr(context.preferences, "system", None)
-    if system_preferences is None:
-        return 1.0
-
-    return max(
-        float(getattr(system_preferences, "pixel_size", 1.0)),
-        float(getattr(system_preferences, "ui_scale", 1.0)),
-        1.0,
-    )
-
-
 UV_IMAGE_PAN_SPEED_FACTOR = 100.0
 UV_IMAGE_ZOOM_SPEED_FACTOR = 2.75
 
@@ -40,12 +27,11 @@ def image_editor_pan_offset(context: bpy.types.Context, delta: mathutils.Vector)
     space_data = getattr(context, "space_data", None)
     zoom_percent = max(float(getattr(space_data, "zoom_percentage", 100.0)), 1.0)
     zoom = zoom_percent / 100.0
-    scale = ui_pixel_scale(context)
     pixels_per_pan_unit = 100.0 * zoom
 
     return (
-        float(delta.x) * scale * UV_IMAGE_PAN_SPEED_FACTOR / pixels_per_pan_unit,
-        float(delta.y) * scale * UV_IMAGE_PAN_SPEED_FACTOR / pixels_per_pan_unit,
+        float(delta.x) * UV_IMAGE_PAN_SPEED_FACTOR / pixels_per_pan_unit,
+        float(delta.y) * UV_IMAGE_PAN_SPEED_FACTOR / pixels_per_pan_unit,
     )
 
 
@@ -166,7 +152,7 @@ class View2DPan:
                 bpy.ops.image.view_pan(offset=image_editor_pan_offset(context, delta))
                 return
 
-            pan_delta = (delta * self.pan_scale * ui_pixel_scale(context)) + self.pan_remainder
+            pan_delta = (delta * self.pan_scale) + self.pan_remainder
             deltax = int(pan_delta.x)
             deltay = int(pan_delta.y)
             self.pan_remainder[:] = (pan_delta.x - deltax, pan_delta.y - deltay)

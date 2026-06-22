@@ -35,7 +35,8 @@ class PuckMenuActions:
             event,
             menu.owner_context.region_position(menu.mouse_pos),
         ))
-        if (pointer - menu.initial_mouse_pos).length <= HOTKEY_MENU_POINTER_DEAD_ZONE_RADIUS:
+        dead_zone_radius = getattr(menu, "hotkey_dead_zone_radius", HOTKEY_MENU_POINTER_DEAD_ZONE_RADIUS)
+        if (pointer - menu.initial_mouse_pos).length <= dead_zone_radius:
             return False
 
         return any(

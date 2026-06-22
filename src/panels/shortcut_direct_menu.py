@@ -60,7 +60,7 @@ class ShortcutDirectMenu:
             return
 
         shortcut.ui.begin_frame(shortcut.mouse_pos)
-        rects = direct_menu_rects(shortcut.button_center, shortcut.menu_button_size)
+        rects = direct_menu_rects(shortcut.button_center, shortcut.menu_button_size, shortcut.menu_gap)
         for action in PUCK_ACTIONS:
             self._draw_action(context, action, shortcut.direct_menu_images[action], rects[action], draw_opacity)
 
@@ -118,6 +118,7 @@ class ShortcutDirectMenu:
             shortcut.mouse_pos.x,
             shortcut.mouse_pos.y,
             shortcut._supports_action,
+            shortcut.menu_gap,
         )
 
         if event.value == 'PRESS' and is_over_menu:

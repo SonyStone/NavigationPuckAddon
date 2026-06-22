@@ -8,6 +8,7 @@ from ..imgui.ui import UI
 from ..operators.view_operations import ViewOperationSet
 from ..utils.draw_handler import DrawHandler, force_redraw
 from ..utils.operator_return import OperatorReturn, OperatorReturnType
+from ..utils.scale import interface_scale
 from ..activation import get_activation_mode, get_addon_preferences, get_mode_menu_button_size
 from .editor_context import (
     RegionLocalEvent,
@@ -17,9 +18,17 @@ from .editor_context import (
 from .editor_state import EditorState
 from .puck_assets import load_action_images
 from .owner_context import OwnerContext
-from .puck_menu_actions import PuckMenuActions
+from .puck_menu_actions import HOTKEY_MENU_POINTER_DEAD_ZONE_RADIUS, PuckMenuActions
 from .puck_menu_hotkey import PuckMenuHotkey
 from .view_operation_dispatch import handle_view_operation_events
+
+
+DEFAULT_MENU_BUTTON_SIZE = 55.0
+DEFAULT_MENU_GAP = 5.0
+DEFAULT_DRAG_SELECT_DISTANCE = 30.0
+DEFAULT_HOTKEY_DEAD_ZONE_RADIUS = HOTKEY_MENU_POINTER_DEAD_ZONE_RADIUS
+DEFAULT_AUTO_DISMISS_DISTANCE = 200.0
+DEFAULT_FOLLOW_DISTANCE = 70.0
 
 
 class NavigationPuckWidget:
@@ -49,17 +58,18 @@ class NavigationPuckWidget:
         self.is_pressed = False
         self.is_in_radius = False
         self.is_done_operation = False
-        self.auto_dismiss_distance = 200.0
-        self.follow_distance = 70.0
+        self.auto_dismiss_distance = DEFAULT_AUTO_DISMISS_DISTANCE
+        self.follow_distance = DEFAULT_FOLLOW_DISTANCE
 
-        self.button_sizes = 55
-        self.initial_offset = (5, 5)
+        self.button_sizes = DEFAULT_MENU_BUTTON_SIZE
+        self.initial_offset = (DEFAULT_MENU_GAP, DEFAULT_MENU_GAP)
         
         self.follow_mouse = False
         self.drag_select = False
         self.dismiss_on_key_release = False
         self.dismiss_key_type = ""
-        self.drag_select_start_distance = 30.0
+        self.drag_select_start_distance = DEFAULT_DRAG_SELECT_DISTANCE
+        self.hotkey_dead_zone_radius = DEFAULT_HOTKEY_DEAD_ZONE_RADIUS
         self.is_running = False
         self.stop_requested = False
 
@@ -70,9 +80,18 @@ class NavigationPuckWidget:
     def _sync_preferences(self, context: bpy.types.Context) -> None:
         prefs = get_addon_preferences(context)
         activation_mode = get_activation_mode(context)
-        self.button_sizes = get_mode_menu_button_size(prefs, activation_mode, self.button_sizes)
+        scale = interface_scale(context)
+        self.button_sizes = max(
+            get_mode_menu_button_size(prefs, activation_mode, DEFAULT_MENU_BUTTON_SIZE) * scale,
+            1.0,
+        )
+        scaled_gap = DEFAULT_MENU_GAP * scale
+        self.initial_offset = (scaled_gap, scaled_gap)
+        self.auto_dismiss_distance = DEFAULT_AUTO_DISMISS_DISTANCE * scale
+        self.follow_distance = DEFAULT_FOLLOW_DISTANCE * scale
+        self.hotkey_dead_zone_radius = DEFAULT_HOTKEY_DEAD_ZONE_RADIUS * scale
         self.drag_select_start_distance = max(
-            float(getattr(prefs, "drag_select_threshold_radius", self.drag_select_start_distance)),
+            float(getattr(prefs, "drag_select_threshold_radius", DEFAULT_DRAG_SELECT_DISTANCE)) * scale,
             0.0,
         )
         self.editor_state.update(context, self.owner_context.region_data)

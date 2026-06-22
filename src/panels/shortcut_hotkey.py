@@ -57,6 +57,7 @@ class ShortcutHotkey:
             shortcut.activation_mode,
             shortcut.button_size,
             shortcut.menu_button_size,
+            shortcut.menu_gap,
         )
         shortcut._open_puck_menu(context, drag_select=False, dismiss_key_type=dismiss_key_type)
         force_redraw(context)
