@@ -1327,6 +1327,8 @@ class NavigationPuckShortcut:
             return OperatorReturn.PASS_THROUGH
 
         dismiss_key_type = keymap.held_modifier_hotkey_type(event)
+        if not dismiss_key_type and keymap.event_matches_hotkey(event):
+            dismiss_key_type = event.type
         if not dismiss_key_type:
             return OperatorReturn.PASS_THROUGH
 
