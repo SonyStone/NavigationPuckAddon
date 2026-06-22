@@ -419,7 +419,7 @@ class NavigationPuckWidget:
         if not hasattr(event, "mouse_region_x") or not hasattr(event, "mouse_region_y"):
             return False
 
-        pointer = self._owner_local_position(event_area_position(context, event, self._owner_region_position(self.mouse_pos)))
+        pointer = self._owner_local_position(event_position_in_context(context, event, self._owner_region_position(self.mouse_pos)))
         if (pointer - self.initial_mouse_pos).length <= HOTKEY_MENU_POINTER_DEAD_ZONE_RADIUS:
             return False
 
@@ -553,7 +553,7 @@ class NavigationPuckWidget:
         context: bpy.types.Context,
         event: bpy.types.Event,
     ) -> RegionLocalEvent:
-        raw_mouse_pos = event_area_position(context, event, self._owner_region_position(self.mouse_pos))
+        raw_mouse_pos = event_position_in_context(context, event, self._owner_region_position(self.mouse_pos))
         self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
         return RegionLocalEvent(event, self.mouse_pos)
 
@@ -658,9 +658,13 @@ class NavigationPuckWidget:
     def _outside_radius_result(
         self,
         context: bpy.types.Context,
+        event: bpy.types.Event,
         pass_through_modifier_hotkey_event: bool,
     ) -> OperatorReturnType | None:
         if not self.is_pressed and not self.is_in_radius:
+            if self.dismiss_on_key_release and self._hotkey_menu_pointer_on_button(context, event):
+                self.is_in_radius = True
+                return None
             force_redraw(context)
             return self._modal_or_passthrough(pass_through_modifier_hotkey_event)
         return None
@@ -735,7 +739,7 @@ class NavigationPuckWidget:
     ) -> OperatorReturnType:
         self._update_follow_mouse_anchor()
 
-        result = self._outside_radius_result(context, pass_through_modifier_hotkey_event)
+        result = self._outside_radius_result(context, event, pass_through_modifier_hotkey_event)
         if result is not None:
             return result
 
@@ -841,6 +845,7 @@ class NavigationPuckShortcut:
         self.owner_viewport_rects: tuple[ViewportRect, ...] = ()
         self.owner_viewport_rect: ViewportRect = (0, 0, 1, 1)
         self.owner_region_data: bpy.types.RegionView3D | None = None
+        self.pointer_in_owner_area = True
         self.modal_generation = 0
         self.editor_type: str | None = None
         self.is_camera_view = False
@@ -874,11 +879,16 @@ class NavigationPuckShortcut:
         self._update_region_size(context)
         raw_mouse_pos = self._event_region_pos(event, self.button_center)
         self._sync_owner_viewport(context, raw_mouse_pos)
+        self.pointer_in_owner_area = event_window_position_is_in_context_area(context, event)
         self._update_region_size(context)
         self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
         self.last_mouse_pos[:] = self.mouse_pos
-        self._place_button_from_cursor()
-        self._update_target_opacity()
+        if self.pointer_in_owner_area:
+            self._place_button_from_cursor()
+            self._update_target_opacity()
+        else:
+            self.target_opacity = 0.0
+            self.opacity = 0.0
         self.draw_handler.remove()
         self.ui.ctx.reset_state()
         self.draw_handler.add(context, self.draw_callback)
@@ -906,6 +916,7 @@ class NavigationPuckShortcut:
         self.owner_viewport_rects = ()
         self.owner_viewport_rect = (0, 0, 1, 1)
         self.owner_region_data = None
+        self.pointer_in_owner_area = True
 
     def finish(self, context: bpy.types.Context) -> OperatorReturnType:
         """End the shortcut operator and clear draw/timer resources."""
@@ -917,6 +928,7 @@ class NavigationPuckShortcut:
         self.owner_viewport_rects = ()
         self.owner_viewport_rect = (0, 0, 1, 1)
         self.owner_region_data = None
+        self.pointer_in_owner_area = True
         self.press_started_on_button = False
         force_redraw(context)
         return OperatorReturn.FINISHED
@@ -989,13 +1001,69 @@ class NavigationPuckShortcut:
         self,
         context: bpy.types.Context,
         event: bpy.types.Event,
+        *,
+        refresh_owner: bool = True,
     ) -> tuple[mathutils.Vector, RegionLocalEvent]:
         previous_mouse_pos = self.mouse_pos.copy()
-        raw_mouse_pos = self._event_region_pos(event, self._owner_region_position(self.mouse_pos))
-        self._sync_owner_viewport(context, raw_mouse_pos)
+        raw_mouse_pos = event_position_in_context(context, event, self._owner_region_position(self.mouse_pos))
+        if refresh_owner:
+            self._sync_owner_viewport(context, raw_mouse_pos)
         self.mouse_pos[:] = self._owner_local_position(raw_mouse_pos)
         self._update_draw_context(context)
         return previous_mouse_pos, RegionLocalEvent(event, self.mouse_pos)
+
+    def _has_active_pointer_interaction(self) -> bool:
+        return (
+            self.press_started_on_button
+            or self.ui.ctx.active_id is not None
+            or self.view_ops.any_active(self._is_view2d_editor())
+        )
+
+    def _another_shortcut_has_active_pointer_interaction(self) -> bool:
+        try:
+            return NavigationPuckShortcutOperator.has_active_pointer_interaction(excluding=self)
+        except NameError:
+            return False
+
+    def _hide_for_sibling_interaction(self, context: bpy.types.Context) -> OperatorReturnType:
+        self.target_opacity = 0.0
+        self.opacity = 0.0
+        self.press_started_on_button = False
+        self.ui.ctx.reset_state()
+        force_redraw(context)
+        return OperatorReturn.PASS_THROUGH
+
+    def _hide_outside_owner_area(self, context: bpy.types.Context) -> OperatorReturnType:
+        should_redraw = (
+            self.pointer_in_owner_area
+            or self.press_started_on_button
+            or self.opacity > 0.0
+            or self.target_opacity > 0.0
+            or self.ui.ctx.active_id is not None
+        )
+        self.pointer_in_owner_area = False
+        self.press_started_on_button = False
+        self.target_opacity = 0.0
+        self.opacity = 0.0
+        if should_redraw:
+            self.ui.ctx.reset_state()
+            force_redraw(context)
+        return OperatorReturn.PASS_THROUGH
+
+    def _outside_owner_area_event_result(
+        self,
+        context: bpy.types.Context,
+        event: bpy.types.Event,
+    ) -> OperatorReturnType | None:
+        if self._has_active_pointer_interaction():
+            self.pointer_in_owner_area = True
+            return None
+
+        if event_window_position_is_in_context_area(context, event):
+            self.pointer_in_owner_area = True
+            return None
+
+        return self._hide_outside_owner_area(context)
 
     def _hide_while_menu_runs(
         self,
@@ -1068,6 +1136,11 @@ class NavigationPuckShortcut:
             return self._hotkey_event_handler(context, event)
 
         if self.activation_mode == ACTIVATION_DIRECT_MENU:
+            if (
+                not self._has_active_pointer_interaction()
+                and self._another_shortcut_has_active_pointer_interaction()
+            ):
+                return self._hide_for_sibling_interaction(context)
             return self._direct_menu_event_handler(context, event)
 
         if self._menu_is_running():
@@ -1099,6 +1172,10 @@ class NavigationPuckShortcut:
 
         if not self._context_matches(context):
             return OperatorReturn.PASS_THROUGH
+
+        outside_owner_area_result = self._outside_owner_area_event_result(context, event)
+        if outside_owner_area_result is not None:
+            return outside_owner_area_result
 
         self._sync_preferences(context)
         self._update_region_size(context)
@@ -1210,7 +1287,12 @@ class NavigationPuckShortcut:
         if not self._event_has_region_position(event):
             return OperatorReturn.PASS_THROUGH
 
-        previous_mouse_pos, local_event = self._sync_pointer_from_event(context, event)
+        lock_owner_context = self._has_active_pointer_interaction()
+        previous_mouse_pos, local_event = self._sync_pointer_from_event(
+            context,
+            event,
+            refresh_owner=not lock_owner_context,
+        )
         view_operation_was_active = self.view_ops.any_active(self._is_view2d_editor())
         if view_operation_was_active:
             return self._continue_direct_menu_view_operation(context, event, local_event, view_operation_was_active)
@@ -1285,6 +1367,9 @@ class NavigationPuckShortcut:
     def draw_callback(self, _op: typing.Any, context: bpy.types.Context):
         """Draw the shortcut icon and its debug zones."""
         self._sync_preferences(context)
+        if not self.pointer_in_owner_area and not self._has_active_pointer_interaction():
+            return
+
         if self._draw_activation_mode_overlay(context):
             return
 
@@ -1305,6 +1390,13 @@ class NavigationPuckShortcut:
 
     def _draw_direct_menu(self, context: bpy.types.Context) -> None:
         if self._menu_is_running():
+            return
+
+        if (
+            not self._has_active_pointer_interaction()
+            and self._another_shortcut_has_active_pointer_interaction()
+        ):
+            self.ui.ctx.reset_state()
             return
 
         if self.view_ops.any_active(self._is_view2d_editor()):
@@ -1727,6 +1819,17 @@ class NavigationPuckShortcutOperator(bpy.types.Operator):
     @classmethod
     def get_app(cls, key: tuple[int, int, int, int]) -> NavigationPuckShortcut | None:
         return cls.apps.get(key)
+
+    @classmethod
+    def has_active_pointer_interaction(
+        cls,
+        *,
+        excluding: NavigationPuckShortcut | None = None,
+    ) -> bool:
+        return any(
+            app is not excluding and app.is_running and app._has_active_pointer_interaction()
+            for app in cls.apps.values()
+        )
 
     @classmethod
     def ensure_app(cls, context: bpy.types.Context) -> NavigationPuckShortcut:
