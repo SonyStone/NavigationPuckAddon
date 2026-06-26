@@ -20,6 +20,7 @@ class PuckMenuHotkey:
     ) -> OperatorReturnType | None:
         menu = self.menu
         if menu.dismiss_on_key_release and event.type == menu.dismiss_key_type and event.value == 'RELEASE':
+            menu.dismiss_key_released = True
             menu.view_ops.cancel(menu._is_view2d_editor())
             return menu.finish(context)
         return None
@@ -65,7 +66,12 @@ class PuckMenuHotkey:
         return menu.dismiss_on_key_release and menu.dismiss_key_type in MODIFIER_KEY_STATE_ATTRS
 
     def _should_reopen_after_action(self, event: bpy.types.Event) -> bool:
-        return self.menu.dismiss_on_key_release and self._dismiss_modifier_is_held(event)
+        menu = self.menu
+        if not menu.dismiss_on_key_release or menu.dismiss_key_released:
+            return False
+        if self._dismiss_key_is_modifier():
+            return self._dismiss_modifier_is_held(event)
+        return True
 
     def _reopen_after_action(self, context: bpy.types.Context) -> OperatorReturnType:
         menu = self.menu

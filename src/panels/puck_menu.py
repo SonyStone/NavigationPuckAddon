@@ -68,6 +68,7 @@ class NavigationPuckWidget:
         self.drag_select = False
         self.dismiss_on_key_release = False
         self.dismiss_key_type = ""
+        self.dismiss_key_released = False
         self.drag_select_start_distance = DEFAULT_DRAG_SELECT_DISTANCE
         self.hotkey_dead_zone_radius = DEFAULT_HOTKEY_DEAD_ZONE_RADIUS
         self.is_running = False
@@ -121,6 +122,7 @@ class NavigationPuckWidget:
         self.drag_select = drag_select
         self.dismiss_on_key_release = dismiss_on_key_release
         self.dismiss_key_type = dismiss_key_type
+        self.dismiss_key_released = False
 
     def _event_positions(
         self,
@@ -207,6 +209,7 @@ class NavigationPuckWidget:
         self.is_running = False
         self.dismiss_on_key_release = False
         self.dismiss_key_type = ""
+        self.dismiss_key_released = False
         if reveal_shortcut:
             try:
                 from .navigation_puck_operators import NavigationPuckShortcutOperator
@@ -225,6 +228,7 @@ class NavigationPuckWidget:
         self.stop_requested = True
         self.dismiss_on_key_release = False
         self.dismiss_key_type = ""
+        self.dismiss_key_released = False
         self.owner_context.clear()
 
     def _is_view2d_editor(self) -> bool:

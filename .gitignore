@@ -6,4 +6,6 @@
 skills-lock.json
 
 # builds
+/build/
+/dist/
 *.zip

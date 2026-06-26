@@ -17,7 +17,7 @@ Navigation Puck adds a compact viewport navigation menu to Blender. It is inspir
 
 ## Activation
 
-The default activation mode is `Hotkey`. Press and hold `Left Alt` to open the Navigation Puck menu, then drag toward an action and release. The hotkey can be changed in the add-on preferences.
+The default activation mode is `Hotkey`. Press `V` to open the Navigation Puck menu. The hotkey can be changed in Blender's keymap preferences by searching for `Navigation Puck Hotkey`.
 
 Preferences also include two alternate activation modes:
 

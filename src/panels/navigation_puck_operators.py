@@ -4,7 +4,7 @@ import mathutils
 from ..utils.modal import add_modal_handler
 from ..utils.operator_return import OperatorReturn, OperatorReturnType
 from . import activation_runtime
-from ..activation import MODIFIER_KEY_STATE_ATTRS
+from ..activation import ACTIVATION_HOTKEY_MENU, MODIFIER_KEY_STATE_ATTRS, get_activation_mode
 from .editor_context import (
     context_key,
     editor_context_override_at_event,
@@ -87,12 +87,6 @@ class NavigationPuckHotkeyOperator(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     @staticmethod
-    def _modifier_event_should_pass_through(event: bpy.types.Event) -> bool:
-        if event.type not in MODIFIER_KEY_STATE_ATTRS:
-            return False
-        return any(app.is_running for app in NavigationPuckShortcutOperator.apps.values())
-
-    @staticmethod
     def _operator_result_for_event(result: OperatorReturnType, event: bpy.types.Event) -> OperatorReturnType:
         if 'CANCELLED' in result:
             return OperatorReturn.CANCELLED
@@ -114,9 +108,6 @@ class NavigationPuckHotkeyOperator(bpy.types.Operator):
 
         if require_event_in_context and not event_window_position_is_in_context_area(context, event):
             return OperatorReturn.CANCELLED
-
-        if self._modifier_event_should_pass_through(event):
-            return OperatorReturn.PASS_THROUGH
 
         anchor = event_position_in_context(context, event, mathutils.Vector((-1.0, -1.0)))
         context_override = make_context_override(context, anchor)
@@ -174,6 +165,9 @@ class NavigationPuckHotkeyOperator(bpy.types.Operator):
         return OperatorReturn.CANCELLED
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> OperatorReturnType:
+        if get_activation_mode(context) != ACTIVATION_HOTKEY_MENU:
+            return OperatorReturn.PASS_THROUGH
+
         target_override = editor_context_override_at_event(context, event)
         if target_override:
             result = self._invoke_with_override(

@@ -19,7 +19,7 @@ from . src.keymap import register_keymaps, unregister_keymaps
 bl_info = { # type: ignore
     "name": "Navigation Puck Addon",
     "author": "Ilya",
-    "version": (2, 0, 0),
+    "version": (2, 0, 1),
     "blender": (4, 2, 0),
     "location": "View3D > Navigation Puck",
     "description": "Custom navigation puck widget",

@@ -1,12 +1,11 @@
 """
 Preferences for the Navigation Puck addon.
-This module defines the addon preferences, including keybinding customization.
+This module defines the addon preferences.
 """
 
 import typing
 
 import bpy
-import rna_keymap_ui
 
 from .. import __package__ as base_package
 from .activation import (
@@ -16,40 +15,73 @@ from .activation import (
     DEFAULT_ACTIVATION_MODE,
 )
 
-
-HOTKEY_PRESETS = (
-    ("Alt", "LEFT_ALT"),
-    ("Ctrl", "LEFT_CTRL"),
-    ("Space", "SPACE"),
-)
-
-
-class NavigationPuckSetHotkeyOperator(bpy.types.Operator):
-    """Set the Navigation Puck hotkey to a preset key."""
-
-    bl_idname = "navigation_puck.set_hotkey"
-    bl_label = "Set Navigation Puck Hotkey"
-    bl_options = {'INTERNAL'}
-
-    key_type: bpy.props.StringProperty() # type: ignore
-
-    def execute(self, context: bpy.types.Context):
-        from . import keymap
-
-        if not keymap.set_hotkey(self.key_type):
-            return {'CANCELLED'}
-        return {'FINISHED'}
+KEYMAP_HOTKEY_SEARCH_TEXT = "Navigation Puck Hotkey"
 
 
 def _refresh_activation_mode(self: typing.Any, context: bpy.types.Context) -> None:
     try:
-        from . import keymap
         from .panels import activation_runtime
 
-        keymap.refresh_keymaps()
         activation_runtime.refresh_activation_runtime(context, allow_blender_development=True)
     except Exception as ex:
         print(f"Navigation Puck failed to refresh activation mode: {ex}")
+
+
+def _iter_preference_areas(context: bpy.types.Context | None = None) -> typing.Iterator[bpy.types.Area]:
+    seen: set[int] = set()
+
+    area = getattr(context, "area", None) if context else None
+    if area and area.type == 'PREFERENCES':
+        seen.add(area.as_pointer())
+        yield area
+
+    window_manager = (context.window_manager if context else bpy.context.window_manager)
+    for window in window_manager.windows:
+        screen = window.screen
+        for area in screen.areas:
+            if area.type != 'PREFERENCES':
+                continue
+            area_pointer = area.as_pointer()
+            if area_pointer in seen:
+                continue
+            seen.add(area_pointer)
+            yield area
+
+
+def _show_keymap_hotkey_filter(context: bpy.types.Context | None = None) -> bool:
+    updated = False
+    for area in _iter_preference_areas(context):
+        for space in area.spaces:
+            if space.type != 'PREFERENCES' or not hasattr(space, "filter_text"):
+                continue
+            space.filter_type = 'NAME'
+            space.filter_text = KEYMAP_HOTKEY_SEARCH_TEXT
+            area.tag_redraw()
+            updated = True
+    return updated
+
+
+def _show_keymap_hotkey_filter_once() -> None:
+    _show_keymap_hotkey_filter()
+
+
+class NavigationPuckOpenKeymapPreferencesOperator(bpy.types.Operator):
+    """Open Blender's Keymap preferences."""
+
+    bl_idname = "navigation_puck.open_keymap_preferences"
+    bl_label = "Edit Navigation Puck Hotkey"
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context: bpy.types.Context):
+        try:
+            bpy.ops.screen.userpref_show('INVOKE_DEFAULT', section='KEYMAP')
+        except RuntimeError as ex:
+            self.report({'WARNING'}, f"Could not open keymap preferences: {ex}")
+            return {'CANCELLED'}
+
+        if not _show_keymap_hotkey_filter(context):
+            bpy.app.timers.register(_show_keymap_hotkey_filter_once, first_interval=0.1)
+        return {'FINISHED'}
 
 
 class NavigationPuckPreferences(bpy.types.AddonPreferences):
@@ -187,43 +219,10 @@ class NavigationPuckPreferences(bpy.types.AddonPreferences):
         box = layout.box()
         box.label(text="Hotkey")
         box.prop(self, "hotkey_menu_button_size")
-
-        wm = context.window_manager
-        if wm is None:
-            return
-
-        from . import keymap
-
-        self._draw_hotkey_preset_buttons(box)
-        self._draw_hotkey_keymaps(box, wm, keymap)
-        self._draw_spacebar_warning(box, keymap)
-
-    def _draw_hotkey_preset_buttons(self, box: bpy.types.UILayout) -> None:
-        preset_row = box.row(align=True)
-        preset_row.label(text="Preset keys")
-        for label, key_type in HOTKEY_PRESETS:
-            op = preset_row.operator(NavigationPuckSetHotkeyOperator.bl_idname, text=label)
-            op.key_type = key_type
-
-    def _draw_hotkey_keymaps(
-        self,
-        box: bpy.types.UILayout,
-        wm: bpy.types.WindowManager,
-        keymap: typing.Any,
-    ) -> None:
-        kc = wm.keyconfigs.addon
-        if not kc:
-            return
-
-        for km, kmi in keymap.get_hotkey_keymaps():
-            rna_keymap_ui.draw_kmi([], kc, km, kmi, box, 0) # type: ignore
-
-    def _draw_spacebar_warning(self, box: bpy.types.UILayout, keymap: typing.Any) -> None:
-        if keymap.hotkey_uses_space():
-            box.label(text="Space disables Blender's default Spacebar action while this mode is active.", icon='INFO')
+        box.operator(NavigationPuckOpenKeymapPreferencesOperator.bl_idname)
 
 
 classes = (
-    NavigationPuckSetHotkeyOperator,
+    NavigationPuckOpenKeymapPreferencesOperator,
     NavigationPuckPreferences,
 )

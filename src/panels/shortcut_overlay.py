@@ -35,7 +35,6 @@ from .owner_context import OwnerContext
 from .puck_invocation import _invoke_navigation_puck_widget
 from .shortcut_button import ShortcutButton
 from .shortcut_direct_menu import ShortcutDirectMenu
-from .shortcut_hotkey import ShortcutHotkey
 from .shortcut_placement import ShortcutPlacement
 
 
@@ -58,7 +57,6 @@ class NavigationPuckShortcut:
         self.placement = ShortcutPlacement(self)
         self.shortcut_button = ShortcutButton(self)
         self.direct_menu = ShortcutDirectMenu(self)
-        self.hotkey = ShortcutHotkey(self)
 
     def _init_draw_state(self) -> None:
         self.draw_handler = DrawHandler()
@@ -290,7 +288,7 @@ class NavigationPuckShortcut:
         event: bpy.types.Event,
     ) -> OperatorReturnType | None:
         if self.activation_mode == ACTIVATION_HOTKEY_MENU:
-            return self.hotkey.event_handler(context, event)
+            return OperatorReturn.PASS_THROUGH
 
         if self.activation_mode == ACTIVATION_DIRECT_MENU:
             if (
